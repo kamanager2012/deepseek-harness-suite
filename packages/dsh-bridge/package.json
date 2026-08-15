@@ -1,0 +1,42 @@
+{
+  "name": "@dsh-community/dsh-bridge",
+  "version": "0.1.0",
+  "description": "Anti-Corruption & Contract Layer for DeepSeek Harness (DSH)",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./types": {
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/types/index.js"
+    },
+    "./events": {
+      "types": "./dist/events/event-stream.d.ts",
+      "import": "./dist/events/event-stream.js"
+    },
+    "./agent": {
+      "types": "./dist/agent/agent-controller.d.ts",
+      "import": "./dist/agent/agent-controller.js"
+    },
+    "./runtime": {
+      "types": "./dist/runtime/subprocess-manager.d.ts",
+      "import": "./dist/runtime/subprocess-manager.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "test:contract": "vitest run __tests__/contract"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^22.13.4",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
+  }
+}

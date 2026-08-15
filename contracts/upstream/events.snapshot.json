@@ -1,0 +1,22 @@
+{
+  "version": "0.1.0-rc.8",
+  "extractedAt": "2026-08-15T21:20:00Z",
+  "events": [
+    "session.created",
+    "session.updated",
+    "session.forked",
+    "agent.state",
+    "agent.thought",
+    "agent.message",
+    "tool.call",
+    "tool.result",
+    "tool.approval_needed",
+    "metrics.update",
+    "error"
+  ],
+  "publicMethods": {
+    "agent": ["prompt", "interrupt", "approve", "reject"],
+    "session": ["list", "get", "fork", "rollback", "delete"],
+    "profile": ["load", "inspect", "patch"]
+  }
+}
