@@ -160,14 +160,16 @@ export class DshSubprocessManager {
       return;
     }
 
-    this.appendLog('[SUPERVISOR] Terminating DSH process...');
+    this.appendLog('[SUPERVISOR] Terminating DSH process tree...');
 
     const child = this.child;
+    const pid = child.pid;
+
     return new Promise((resolve) => {
       const timeout = setTimeout(() => {
-        if (child && !child.killed) {
-          this.appendLog('[SUPERVISOR] Force killing with SIGKILL');
-          child.kill('SIGKILL');
+        if (pid && !child.killed) {
+          this.appendLog('[SUPERVISOR] Force killing process tree');
+          this.killProcessTree(pid, true);
         }
         this.health.running = false;
         resolve();
@@ -180,8 +182,34 @@ export class DshSubprocessManager {
         resolve();
       });
 
-      child.kill('SIGTERM');
+      if (pid) {
+        this.killProcessTree(pid, false);
+      } else {
+        child.kill('SIGTERM');
+      }
     });
+  }
+
+  /**
+   * Cross-platform process tree termination to prevent zombie DSH servers on Windows/Linux
+   */
+  private killProcessTree(pid: number, force = false): void {
+    try {
+      if (process.platform === 'win32') {
+        const flag = force ? '/F' : '';
+        spawn('taskkill', ['/PID', String(pid), '/T', flag].filter(Boolean), { stdio: 'ignore' });
+      } else {
+        const signal = force ? 'SIGKILL' : 'SIGTERM';
+        // Try killing the entire process group if negative pid is supported
+        try {
+          process.kill(-pid, signal);
+        } catch {
+          process.kill(pid, signal);
+        }
+      }
+    } catch {
+      // Ignore if process already died
+    }
   }
 
   /**
