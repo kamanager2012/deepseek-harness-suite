@@ -71,8 +71,8 @@ export const App: React.FC<AppProps> = ({ controller }) => {
       const store = new DshSharedSessionStore();
       const list = store.listSessions();
       const summaryText = list.length === 0 
-        ? 'No past sessions found in ~/.dsh/sessions' 
-        : `Recent sessions in ~/.dsh/sessions:\n` + list.slice(0, 5).map(s => `  • ${s.id} - ${s.title} (${s.messageCount} msgs, ${s.model})`).join('\n') + `\n\nUse /resume <id> to resume.`;
+        ? 'No past sessions found in ~/.dsh/suite_sessions or ~/.dsh/sessions' 
+        : `Recent sessions (Suite & Official Read-Only):\n` + list.slice(0, 5).map(s => `  • ${s.id} - ${s.title} (${s.isOfficial ? 'Official' : `${s.messageCount} msgs`}, ${s.model})`).join('\n') + `\n\nUse /resume <id> to resume.`;
       
       controller.addSystemMessage(summaryText);
       return;
