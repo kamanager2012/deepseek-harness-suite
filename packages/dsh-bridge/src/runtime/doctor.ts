@@ -90,6 +90,30 @@ export class DshDoctor {
       });
     }
 
+    // 4. Storage: Configured Workspace Access
+    if (config.workspacePath) {
+      try {
+        if (!fs.existsSync(config.workspacePath)) {
+          fs.mkdirSync(config.workspacePath, { recursive: true });
+        }
+        fs.accessSync(config.workspacePath, fs.constants.R_OK | fs.constants.W_OK);
+        checks.push({
+          name: 'Workspace Containment & Directory Access',
+          category: 'storage',
+          status: 'pass',
+          detail: `Workspace path is read/write accessible: ${config.workspacePath}`,
+        });
+      } catch (err: any) {
+        checks.push({
+          name: 'Workspace Containment & Directory Access',
+          category: 'storage',
+          status: 'fail',
+          detail: `Cannot write to configured workspace: ${err.message}`,
+          fix: `Check filesystem permissions on ${config.workspacePath}`,
+        });
+      }
+    }
+
     // 4. Config: DeepSeek API Key / Model
     const hasApiKey = Boolean(config.apiKey || process.env.DEEPSEEK_API_KEY);
     const model = config.model || 'deepseek-reasoner';
