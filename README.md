@@ -40,12 +40,12 @@ or the [English handoff](docs/ECOSYSTEM_HANDOFF.en.md).
 | **Official Source Ownership** | `[REAL]` | `Ownership = 0`. Zero vendored code. Runtime launched via official `@deepseek-ai/dsh`. |
 | **Desktop Web Shell** | `[REAL]` | Controlled Electron shell hosting official localhost runtime with tray & clean process lifecycle. |
 | **Process Tree Governance** | `[REAL]` | POSIX process group detachment + Windows `taskkill /T /F` (0 orphan 3080 port leaks). |
-| **Dynamic Contract CI** | `[REAL]` | Live introspection probe against `dsh --dump-default-config` (128 plugins verified). |
+| **Dynamic Contract CI** | `[PROBE]` | Introspection probe against `@deepseek-ai/dsh` CLI flags & plugin surface (128 plugins observed). |
 | **TUI Visual Components** | `[REAL]` | `DiffViewer` (syntax highlighing), `ReasoningBox` (collapsible thought stream), `ToolCard`. |
 | **Smart Risk Evaluator** | `[FAIL-CLOSED]` | `DshRiskEvaluator` enforces capability semantics; unknown tools fail closed (high risk / approval required). |
-| **Runtime Execution Transport** | `[LABS / SDK]` | `DshRuntimeClient` drives official `@deepseek-ai/dsh-sdk-client` stdio JSON-RPC; falls back explicitly with exit code checking. |
+| **Runtime Execution Transport** | `[LABS / SDK-ADAPTER]` | `DshRuntimeClient` implements typed `SessionEvent.data` decoding & pre-enqueue replay guard; live JSON-RPC execution pending upstream profile. |
 | **Interactive Tool Approval** | `[BLOCKED_BY_UPSTREAM]` | Client-side risk evaluation active; runtime server-to-client approval RPC pending upstream SDK support. |
-| **Checkpoint & Workspace Jail** | `[WORKSPACE-JAIL]` | `DshCheckpointEngine` binds to `config.workspacePath`, enforces ancestor symlink containment and NUL/control byte filtering. |
+| **Checkpoint & Workspace Jail** | `[WORKSPACE-JAIL]` | `DshCheckpointEngine` binds to `config.workspacePath`, enforces ancestor symlink containment, NUL/control byte filtering, and 5MB snapshot memory cap. |
 | **Session Safety Gate** | `[READ-SAFE]` | Official `~/.dsh/sessions` is strictly **Read-Only** to prevent state corruption; Suite uses `~/.dsh/suite_sessions`. |
 | **Diagnostics & Health** | `[REAL]` | `/doctor` executes five-layer system checks (Node version, process isolation, API keys, token budget). |
 | **Tamper-Evident Audit** | `[REAL]` | `/audit` maintains cryptographic SHA-256 hash chains over every tool invocation & approval decision. |
