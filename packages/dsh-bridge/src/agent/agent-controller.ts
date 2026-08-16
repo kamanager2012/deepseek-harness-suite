@@ -44,7 +44,7 @@ export class DshAgentController {
     this.config = options.config;
     this.events = options.events || new DshEventStream();
     this.auditChain = options.auditChain || new DshAuditChain();
-    this.checkpoints = options.checkpoints || new DshCheckpointEngine();
+    this.checkpoints = options.checkpoints || new DshCheckpointEngine(this.config.workspacePath);
     this.runtimeClient = options.runtimeClient || new DshRuntimeClient();
 
     this.initSession();

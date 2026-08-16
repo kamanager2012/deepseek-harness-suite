@@ -21,9 +21,10 @@
 | **跨平台进程树治理** | `[REAL]` | POSIX 独立进程组分离 + Windows 树杀（3080 端口 0 残留、0 僵尸进程）。 |
 | **动态契约 CI 探针** | `[REAL]` | 真实调用官方命令动态采集 128 个插件行与 CLI flags，防止上游破坏性变更。 |
 | **终端极客视觉组件** | `[REAL]` | `DiffViewer`（行级红绿高亮）、`ReasoningBox`（R1 推理思维折叠）、`ToolCard`。 |
-| **智能免审批引擎** | `[REAL]` | `DshRiskEvaluator` 白名单秒放行只读探查，拦截并弹窗高危破坏指令。 |
-| **运行时调用通道** | `[REAL]` | `DshRuntimeClient` 直接驱动官方 `@deepseek-ai/dsh-sdk-client` stdio JSON-RPC 双向通信。 |
+| **智能免审批引擎** | `[FAIL-CLOSED]` | `DshRiskEvaluator` 基于能力原语建模；未知/未识别工具一律 Fail-Closed 判定为高危并强行触发审批。 |
+| **运行时调用通道** | `[LABS / SDK]` | `DshRuntimeClient` 直接驱动官方 `@deepseek-ai/dsh-sdk-client` stdio JSON-RPC；降级时显式告警并校验进程退出码。 |
 | **交互式工具审批** | `[BLOCKED_BY_UPSTREAM]` | 客户端风控规则完备；官方 SDK 目前尚未开放服务端向客户端发起 Approval RPC 请求通道。 |
+| **快照与工作区沙箱** | `[WORKSPACE-JAIL]` | `DshCheckpointEngine` 绑定当前配置的工作区根目录，支持祖先目录 Symlink 越界检测与 NUL/控制字符强拦截。 |
 | **敏感与巨大目录防御** | `[REAL]` | `.dshignore` 引擎自动拦截 `.env`、密钥与 `node_modules` 避免被 AI 误读误改。 |
 | **会话存储安全隔离** | `[READ-SAFE]` | 官方 `~/.dsh/sessions` 严格只读；Suite 自建状态安全隔离在 `~/.dsh/suite_sessions/`。 |
 | **回滚与分叉** | `[UI-LEVEL]` | 标明当前为消息历史回退（`/rollback`），待官方 runtime 开放状态回滚 API。 |

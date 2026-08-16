@@ -2,6 +2,13 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 
+export class SecurityBoundaryViolationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SecurityBoundaryViolationError';
+  }
+}
+
 export interface FileSnapshot {
   filePath: string;
   relativePath: string;
@@ -17,11 +24,15 @@ export interface CheckpointRecord {
   snapshots: FileSnapshot[];
 }
 
+// Regex to catch NUL and ASCII/Unicode control characters (\x00-\x1f, \x7f)
+const CONTROL_CHAR_REGEX = /[\x00-\x1F\x7F]/;
+
 /**
  * Checkpoint & Safe File Undo Engine with Strict Workspace Boundary Jail
  * 
  * Enforces strict workspace containment:
- * - Prevents path traversal (../), symlink escapes, or drive root jumping.
+ * - Rejects NUL and control characters in file paths.
+ * - Resolves nearest existing ancestor to prevent symlink traversal escapes on non-existent targets.
  * - Restricts snapshot and /undo rollback operations strictly within workspaceRoot.
  * - Truncates trailing checkpoints on sequential rollback to prevent invalid state chains.
  */
@@ -46,50 +57,78 @@ export class DshCheckpointEngine {
   }
 
   /**
+   * Resolve canonical workspace root
+   */
+  private getCanonicalWorkspaceRoot(): string {
+    if (fs.existsSync(this.workspaceRoot)) {
+      try {
+        return fs.realpathSync.native ? fs.realpathSync.native(this.workspaceRoot) : fs.realpathSync(this.workspaceRoot);
+      } catch {
+        return path.resolve(this.workspaceRoot);
+      }
+    }
+    return path.resolve(this.workspaceRoot);
+  }
+
+  /**
+   * Find the nearest existing ancestor path for targetPath and resolve its realpath
+   */
+  private resolveNearestRealpath(targetPath: string): string {
+    let current = path.resolve(targetPath);
+    const trail: string[] = [];
+
+    while (!fs.existsSync(current)) {
+      const parent = path.dirname(current);
+      if (parent === current) {
+        // Reached filesystem root without finding an existing directory
+        break;
+      }
+      trail.unshift(path.basename(current));
+      current = parent;
+    }
+
+    let realAncestor = current;
+    if (fs.existsSync(current)) {
+      try {
+        realAncestor = fs.realpathSync.native ? fs.realpathSync.native(current) : fs.realpathSync(current);
+      } catch {
+        realAncestor = current;
+      }
+    }
+
+    return trail.length > 0 ? path.join(realAncestor, ...trail) : realAncestor;
+  }
+
+  /**
    * Verify and sanitize that a target path resides strictly inside the workspace boundary.
-   * Throws Error if path escapes workspace.
+   * Throws SecurityBoundaryViolationError if path escapes workspace.
    */
   public sanitizeWorkspacePath(rawPath: string): { fullPath: string; relativePath: string } {
     if (!rawPath || typeof rawPath !== 'string') {
-      throw new Error('Invalid file path: path must be a non-empty string.');
+      throw new SecurityBoundaryViolationError('Invalid file path: path must be a non-empty string.');
     }
 
-    // Check null bytes or control characters
-    if (rawPath.includes('\0')) {
-      throw new Error(`Security Violation: Null byte detected in path "${rawPath}"`);
+    // Check for NUL or control characters
+    if (CONTROL_CHAR_REGEX.test(rawPath)) {
+      throw new SecurityBoundaryViolationError(
+        `Security Boundary Violation: Control character or NUL byte detected in path "${rawPath}"`
+      );
     }
 
     const resolved = path.isAbsolute(rawPath)
       ? path.resolve(rawPath)
       : path.resolve(this.workspaceRoot, rawPath);
 
-    // Canonicalize workspace root
-    let canonicalRoot = this.workspaceRoot;
-    if (fs.existsSync(this.workspaceRoot)) {
-      try {
-        canonicalRoot = fs.realpathSync(this.workspaceRoot);
-      } catch {
-        canonicalRoot = path.resolve(this.workspaceRoot);
-      }
-    }
-
-    // Check if the file exists to resolve symlinks
-    let canonicalTarget = resolved;
-    if (fs.existsSync(resolved)) {
-      try {
-        canonicalTarget = fs.realpathSync(resolved);
-      } catch {
-        canonicalTarget = resolved;
-      }
-    }
+    const canonicalRoot = this.getCanonicalWorkspaceRoot();
+    const canonicalTarget = this.resolveNearestRealpath(resolved);
 
     // Compute relative path from canonical root
     const rel = path.relative(canonicalRoot, canonicalTarget);
 
     // If relative path starts with '..' or is absolute, it is outside workspace
     if (rel.startsWith('..') || path.isAbsolute(rel)) {
-      throw new Error(
-        `Security Boundary Violation: Path "${rawPath}" resolves outside workspace root (${canonicalRoot}). Checkpoint / Undo rejected.`
+      throw new SecurityBoundaryViolationError(
+        `Security Boundary Violation: Path "${rawPath}" resolves outside workspace root (${canonicalRoot}). Target resolved to: ${canonicalTarget}`
       );
     }
 

@@ -13,6 +13,14 @@ export type ToolCapability =
   | 'git:write'
   | 'system:mutate';
 
+export interface ToolDescriptor {
+  name: string;
+  description?: string;
+  capabilities?: ToolCapability[];
+  scope?: 'workspace' | 'system' | 'network';
+  sideEffect?: 'read_only' | 'reversible' | 'irreversible';
+}
+
 export interface ToolRiskEvaluation {
   riskLevel: RiskLevel;
   requiresApproval: boolean;
@@ -72,26 +80,36 @@ const SAFE_SHELL_COMMAND_PREFIXES = [
 /**
  * Capability-Driven Tool Risk & Policy Evaluator
  * 
- * Replaces naive string-prefix matching with true capability semantics:
- * - Maps tool operations to fine-grained capabilities (fs:read, fs:write, process:exec, credential:read).
+ * Enforces strict capability semantics:
+ * - Prefers explicit ToolDescriptor capability declarations over heuristic inference.
+ * - **Fail-Closed on Unknown**: Any unrecognized or unclassified tool defaults to high-risk and requires approval.
  * - Enforces credential and sensitive path protection (.dshignore).
  * - Dissects command lines for destructive, irreversible, or privileged side-effects.
  */
 export class DshRiskEvaluator {
   /**
-   * Infer capabilities from tool name and argument semantics
+   * Infer capabilities from tool descriptor or heuristic argument inspection
    */
-  public static inferCapabilities(name: string, args: Record<string, unknown>): ToolCapability[] {
+  public static inferCapabilities(
+    tool: string | ToolDescriptor,
+    args: Record<string, unknown> = {}
+  ): ToolCapability[] {
+    // 1. If explicit ToolDescriptor is provided with declared capabilities, use it
+    if (typeof tool === 'object' && tool.capabilities && tool.capabilities.length > 0) {
+      return [...tool.capabilities];
+    }
+
+    const name = typeof tool === 'object' ? tool.name : tool;
     const normalized = (name || '').toLowerCase().trim();
 
-    // 1. Check known explicit tool map
+    // 2. Check known explicit tool map
     if (KNOWN_SAFE_READ_TOOLS[normalized]) {
       return [...KNOWN_SAFE_READ_TOOLS[normalized]];
     }
 
     const caps = new Set<ToolCapability>();
 
-    // 2. Destructive keyword check overrides any safe-sounding prefix
+    // 3. Destructive keyword check
     if (
       normalized.includes('delete') ||
       normalized.includes('remove') ||
@@ -105,7 +123,7 @@ export class DshRiskEvaluator {
       caps.add('system:mutate');
     }
 
-    // 3. Credential exposure check
+    // 4. Credential exposure check
     if (
       normalized.includes('password') ||
       normalized.includes('secret') ||
@@ -116,24 +134,25 @@ export class DshRiskEvaluator {
       caps.add('credential:read');
     }
 
-    // 4. Process execution check
+    // 5. Process execution check
     if (
       normalized.includes('bash') ||
       normalized.includes('exec') ||
       normalized.includes('shell') ||
       normalized.includes('terminal') ||
       normalized.includes('command') ||
-      normalized.includes('spawn')
+      normalized.includes('spawn') ||
+      normalized.includes('run')
     ) {
       caps.add('process:exec');
     }
 
-    // 5. Process termination
+    // 6. Process termination
     if (normalized.includes('kill') || normalized.includes('terminate') || normalized.includes('abort')) {
       caps.add('process:kill');
     }
 
-    // 6. File writing / replacing
+    // 7. File writing / replacing
     if (
       normalized.includes('write') ||
       normalized.includes('replace') ||
@@ -144,14 +163,14 @@ export class DshRiskEvaluator {
       caps.add('fs:write');
     }
 
-    // 7. Network operations
+    // 8. Network operations
     if (normalized.includes('fetch') || normalized.includes('http') || normalized.includes('download') || normalized.includes('curl')) {
       caps.add('net:read');
     }
 
-    // Default to fs:read if no other capability is inferred
+    // FAIL-CLOSED: If no known capabilities matched, mark as system:mutate (do not default to fs:read)
     if (caps.size === 0) {
-      caps.add('fs:read');
+      caps.add('system:mutate');
     }
 
     return Array.from(caps);
@@ -161,12 +180,13 @@ export class DshRiskEvaluator {
    * Evaluate risk level and approval requirement based on capability semantics
    */
   public static evaluate(
-    name: string,
+    tool: string | ToolDescriptor,
     args: Record<string, unknown> = {},
     explicitRequiresApproval?: boolean,
     policy: 'auto_safe' | 'strict' | 'unrestricted' = 'auto_safe'
   ): ToolRiskEvaluation {
-    const capabilities = this.inferCapabilities(name, args);
+    const capabilities = this.inferCapabilities(tool, args);
+    const toolName = typeof tool === 'object' ? tool.name : tool;
 
     // 1. Unrestricted policy override
     if (policy === 'unrestricted') {
@@ -238,20 +258,23 @@ export class DshRiskEvaluator {
 
     // 5. Capability-driven risk classification
     if (capabilities.includes('credential:read') || capabilities.includes('system:mutate')) {
+      const isUnrecognized = capabilities.length === 1 && capabilities[0] === 'system:mutate';
       return {
-        riskLevel: 'critical',
+        riskLevel: isUnrecognized ? 'high' : 'critical',
         requiresApproval: true,
         capabilities,
-        reason: `High-privilege capability requested: ${capabilities.join(', ')}`,
+        reason: isUnrecognized
+          ? `Unrecognized tool "${toolName}" failed closed to protect workspace`
+          : `High-privilege capability requested: ${capabilities.join(', ')}`,
       };
     }
 
-    if (capabilities.includes('fs:delete') || capabilities.includes('process:kill')) {
+    if (capabilities.includes('process:exec') || capabilities.includes('fs:delete') || capabilities.includes('process:kill')) {
       return {
         riskLevel: 'high',
         requiresApproval: true,
         capabilities,
-        reason: `Destructive capability requested: ${capabilities.join(', ')}`,
+        reason: `Privileged/destructive capability requested: ${capabilities.join(', ')}`,
       };
     }
 

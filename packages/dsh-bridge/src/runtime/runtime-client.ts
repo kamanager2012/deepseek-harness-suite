@@ -21,6 +21,7 @@ export interface RuntimeExecutionResult {
   sessionId?: string;
   toolCalls?: DshToolCall[];
   tokensUsed?: { prompt: number; completion: number; total: number };
+  executionMode?: 'sdk_jsonrpc' | 'headless_cli';
 }
 
 /**
@@ -75,32 +76,101 @@ export class DshRuntimeClient {
 
       let accumulatedContent = '';
       let accumulatedReasoning = '';
+      const toolCalls: DshToolCall[] = [];
 
       const result: RunResult = await harness.run(prompt, {
         sessionId,
         onNotification: (notif: HarnessNotification) => {
-          // Normalize JSON-RPC notifications from official runtime
-          if (notif.method === 'session/event' || notif.method === 'session.event') {
-            const params = notif.params as any;
-            if (params?.type === 'agent:thought' || params?.type === 'reasoning') {
-              const delta = String(params.delta || params.content || '');
-              accumulatedReasoning += delta;
+          // Normalize official SessionEvent notifications from runtime
+          if (notif.method === 'session.event' || notif.method === 'session/event') {
+            const ev = (notif.params?.event || notif.params) as any;
+            const eventType = String(ev?.type || '');
+
+            // 1. Streaming Assistant Chunks
+            if (eventType === 'assistant/chunk' || eventType === 'agent:thought' || eventType === 'reasoning') {
+              const delta = String(ev.delta || ev.content || '');
+              if (ev.isReasoning || eventType.includes('thought') || eventType.includes('reasoning')) {
+                accumulatedReasoning += delta;
+                events.emitEvent({
+                  type: 'stream:reasoning',
+                  delta,
+                  fullContent: accumulatedReasoning,
+                });
+              } else {
+                accumulatedContent += delta;
+                events.emitEvent({
+                  type: 'agent:status',
+                  status: 'generating',
+                });
+                events.emitEvent({
+                  type: 'stream:content',
+                  delta,
+                  fullContent: accumulatedContent,
+                });
+              }
+            } else if (eventType === 'assistant/message' || eventType === 'agent:message') {
+              const text = String(ev.content || ev.text || '');
+              if (text && !accumulatedContent.includes(text)) {
+                accumulatedContent += text;
+              }
+            }
+
+            // 2. Official Tool Call Events
+            if (eventType === 'tool/call' || eventType === 'tool.call') {
+              const call: DshToolCall = {
+                id: ev.id || `call_${Date.now()}`,
+                name: ev.name || ev.tool || 'unknown_tool',
+                args: ev.args || {},
+                status: 'running',
+                riskLevel: 'medium',
+                startedAt: Date.now(),
+              };
+              toolCalls.push(call);
               events.emitEvent({
-                type: 'stream:reasoning',
-                delta,
-                fullContent: accumulatedReasoning,
+                type: 'tool:requested',
+                toolCall: call,
               });
-            } else if (params?.type === 'agent:message' || params?.type === 'content') {
-              const delta = String(params.delta || params.content || '');
-              accumulatedContent += delta;
+            } else if (eventType === 'tool/result' || eventType === 'tool.result') {
+              const callId = ev.id || ev.callId || 'unknown';
+              const target = toolCalls.find(c => c.id === callId);
+              const toolStatus = ev.error ? 'failed' : 'success';
+              if (target) {
+                target.status = toolStatus;
+                target.output = typeof ev.result === 'string' ? ev.result : JSON.stringify(ev.result || {});
+                target.completedAt = Date.now();
+              }
               events.emitEvent({
-                type: 'agent:status',
-                status: 'generating',
+                type: 'tool:output',
+                toolCallId: callId,
+                output: typeof ev.result === 'string' ? ev.result : JSON.stringify(ev.result || {}),
               });
               events.emitEvent({
-                type: 'stream:content',
-                delta,
-                fullContent: accumulatedContent,
+                type: 'tool:finished',
+                toolCallId: callId,
+                status: toolStatus,
+                output: typeof ev.result === 'string' ? ev.result : JSON.stringify(ev.result || {}),
+                error: ev.error ? String(ev.error) : undefined,
+              });
+            }
+
+            // 3. Official Approval Events
+            if (eventType === 'approval/asked' || eventType === 'approval.asked') {
+              events.emitEvent({
+                type: 'tool:approval_needed',
+                approval: {
+                  id: ev.id || `appr_${Date.now()}`,
+                  toolCall: {
+                    id: ev.toolCallId || ev.id,
+                    name: ev.tool || 'unknown',
+                    args: ev.args || {},
+                    status: 'pending_approval',
+                    riskLevel: 'high',
+                    startedAt: Date.now(),
+                  },
+                  riskLevel: 'high',
+                  promptMessage: ev.message || `Approval required for tool ${ev.tool}`,
+                  timestamp: Date.now(),
+                },
               });
             }
           }
@@ -118,8 +188,16 @@ export class DshRuntimeClient {
         content: finalResponseText.trim(),
         reasoning: accumulatedReasoning.trim() || undefined,
         sessionId: result.sessionId,
+        toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+        executionMode: 'sdk_jsonrpc',
       };
     } catch (sdkErr: any) {
+      // Log explicit fallback so caller is aware of execution mode
+      events.emitEvent({
+        type: 'error',
+        message: `SDK stdio JSON-RPC unavailable (${sdkErr.message}), switching to headless profile execution.`,
+      });
+
       // 2. Fallback execution path: headless profile subprocess runner
       return this.executeHeadlessFallback(options);
     } finally {
@@ -180,8 +258,19 @@ export class DshRuntimeClient {
         reject(err);
       });
 
-      child.on('close', () => {
+      child.on('close', (code) => {
         this.fallbackProcess = null;
+        if (code !== 0 && code !== null) {
+          const errorMsg = `Official DSH headless process exited with failure code ${code}`;
+          events.emitEvent({
+            type: 'agent:status',
+            status: 'error',
+            payload: { error: errorMsg },
+          });
+          reject(new Error(errorMsg));
+          return;
+        }
+
         events.emitEvent({
           type: 'agent:status',
           status: 'idle',
@@ -190,6 +279,7 @@ export class DshRuntimeClient {
         resolve({
           content: accumulatedContent.trim(),
           reasoning: accumulatedReasoning.trim() || undefined,
+          executionMode: 'headless_cli',
         });
       });
     });

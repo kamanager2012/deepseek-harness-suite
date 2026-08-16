@@ -389,16 +389,39 @@ describe('DSH Bridge Contract Tests', () => {
       }
     });
 
-    it('enforces strict workspace path jail and rejects escapes', () => {
+    it('enforces strict workspace path jail and rejects escapes and control chars', () => {
       const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-cp-jail-'));
       try {
         const engine = new DshCheckpointEngine(tempDir);
+        
+        // 1. Path traversal escape
         expect(() => {
           engine.snapshot(['../../etc/passwd'], 'Malicious escape');
         }).toThrow(/Security Boundary Violation/);
+
+        // 2. Control character injection
+        expect(() => {
+          engine.snapshot(['file\x00name.ts'], 'NUL byte');
+        }).toThrow(/Security Boundary Violation/);
+
+        expect(() => {
+          engine.snapshot(['file\x1fname.ts'], 'Control char');
+        }).toThrow(/Security Boundary Violation/);
+
+        // 3. Valid workspace path
+        const valid = engine.sanitizeWorkspacePath('src/main.ts');
+        expect(valid.relativePath).toBe('src/main.ts');
       } finally {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
+    });
+
+    it('fails closed on completely unrecognized tools', () => {
+      const evalRes = DshRiskEvaluator.evaluate('magic_unknown_tool_123', {});
+      expect(evalRes.capabilities).toContain('system:mutate');
+      expect(evalRes.riskLevel).toBe('high');
+      expect(evalRes.requiresApproval).toBe(true);
+      expect(evalRes.reason).toContain('failed closed');
     });
   });
 

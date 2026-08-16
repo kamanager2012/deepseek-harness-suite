@@ -17,26 +17,26 @@ export interface UpstreamSnapshot {
 }
 
 /**
- * Live Dynamic Probe against installed/candidate @deepseek-ai/dsh
+ * Dynamic Runtime Invariant Probe against candidate/installed @deepseek-ai/dsh
  * 
  * Captures real runtime introspection and command surface from official executable.
  */
 export function probeOfficialDsh(targetVersion = '0.1.0-rc.6'): UpstreamSnapshot {
   console.log(`📡 Probing official @deepseek-ai/dsh@${targetVersion}...`);
 
-  // 1. Probe web profile plugins via dump-default-config
+  // 1. Probe web profile plugins via dump-default-config (with extended timeout for cold runners)
   let observedPlugins: string[] = [];
   try {
     const rawDump = execSync(
       `npx -y @deepseek-ai/dsh@${targetVersion} --profile web --dump-default-config`,
-      { encoding: 'utf-8', timeout: 15000 }
+      { encoding: 'utf-8', timeout: 60000, stdio: ['ignore', 'pipe', 'pipe'] }
     );
     const matches = rawDump.matchAll(/name:\s*['"](@deepseek-ai\/[^'"]+)['"]/g);
     for (const m of matches) {
       if (m[1]) observedPlugins.push(m[1]);
     }
   } catch (err: any) {
-    console.warn(`⚠️ Failed to dump profile config: ${err.message}`);
+    console.warn(`⚠️ Failed to dump profile config on primary attempt: ${err.message}`);
   }
 
   // 2. Probe CLI surfaces
@@ -45,7 +45,7 @@ export function probeOfficialDsh(targetVersion = '0.1.0-rc.6'): UpstreamSnapshot
   try {
     const webHelp = execSync(
       `npx -y @deepseek-ai/dsh@${targetVersion} web --help`,
-      { encoding: 'utf-8', timeout: 10000 }
+      { encoding: 'utf-8', timeout: 30000, stdio: ['ignore', 'pipe', 'pipe'] }
     );
     const flagMatches = webHelp.matchAll(/--[a-zA-Z0-9-]+/g);
     for (const f of flagMatches) {
@@ -58,7 +58,7 @@ export function probeOfficialDsh(targetVersion = '0.1.0-rc.6'): UpstreamSnapshot
   try {
     const headlessHelp = execSync(
       `npx -y @deepseek-ai/dsh@${targetVersion} --profile headless --help`,
-      { encoding: 'utf-8', timeout: 10000 }
+      { encoding: 'utf-8', timeout: 30000, stdio: ['ignore', 'pipe', 'pipe'] }
     );
     const flagMatches = headlessHelp.matchAll(/--[a-zA-Z0-9-]+/g);
     for (const f of flagMatches) {
@@ -79,10 +79,8 @@ export function probeOfficialDsh(targetVersion = '0.1.0-rc.6'): UpstreamSnapshot
 }
 
 export function runContractDiff(candidateSnapshot?: UpstreamSnapshot): boolean {
-  const currentSnapshotPath = path.join(rootDir, 'contracts/upstream/events.snapshot.json');
-
   console.log(`\n======================================================`);
-  console.log(`🔍 Upstream Dynamic Contract Compatibility Checker`);
+  console.log(`🔍 Dynamic Runtime Invariant Probe & Verification`);
   console.log(`======================================================\n`);
 
   // If candidate is not passed in, actively PROBE upstream!
@@ -116,11 +114,11 @@ export function runContractDiff(candidateSnapshot?: UpstreamSnapshot): boolean {
   }
 
   if (hasBreaking) {
-    console.error(`\n💥 Compatibility check FAILED. Upstream breaking changes detected!`);
+    console.error(`\n💥 Runtime Invariant Probe FAILED. Upstream breaking changes or timeout detected!`);
     return false;
   }
 
-  console.log(`✅ Dynamic Contract check PASSED. All baseline runtime seams are satisfied.`);
+  console.log(`✅ Dynamic Runtime Invariant Probe PASSED. All baseline runtime seams are satisfied.`);
   return true;
 }
 
