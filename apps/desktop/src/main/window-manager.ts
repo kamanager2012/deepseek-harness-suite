@@ -1,11 +1,18 @@
 import { BrowserWindow, shell, ipcMain } from 'electron';
 import * as path from 'node:path';
+import * as fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { ConfigStore } from './config-store.js';
 import { type DshSubprocessManager, DshSharedSessionStore } from '@dsh-community/dsh-bridge';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+function getRendererAsset(filename: string): string {
+  const distCandidate = path.join(__dirname, '../renderer', filename);
+  if (fs.existsSync(distCandidate)) return distCandidate;
+  return path.join(__dirname, '../../src/renderer', filename);
+}
 
 export class WindowManager {
   private mainWindow: BrowserWindow | null = null;
@@ -51,7 +58,7 @@ export class WindowManager {
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,
-        preload: path.join(__dirname, '../renderer/preload.js'),
+        preload: getRendererAsset('preload.js'),
       },
     });
 
@@ -78,7 +85,7 @@ export class WindowManager {
 
   public loadSetupWizard(): void {
     if (!this.mainWindow) return;
-    const wizardHtml = path.join(__dirname, '../../src/renderer/index.html');
+    const wizardHtml = getRendererAsset('index.html');
     this.mainWindow.loadFile(wizardHtml);
   }
 
