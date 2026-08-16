@@ -7,6 +7,7 @@ import {
   DshEventStream, 
   DshRiskEvaluator, 
   DshCheckpointEngine,
+  DshSharedSessionStore,
   SecurityBoundaryViolationError,
   type DshEvent,
   type ToolDescriptor
@@ -206,4 +207,61 @@ describe('Reality Gate & Runtime Transport Verification Suite', () => {
       }
     });
   });
+
+  describe('One Harness. Three Surfaces - Shared Session Model', () => {
+    it('discovers official sessions in read-only mode alongside suite sessions', () => {
+      const tempOfficial = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-official-sessions-'));
+      const tempSuite = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-suite-sessions-'));
+
+      try {
+        // Create official session structure: <official>/<project>/<sessionId>/session.jsonl
+        const projDir = path.join(tempOfficial, 'my-web-project');
+        const sessDir = path.join(projDir, 'sess_web_123');
+        fs.mkdirSync(sessDir, { recursive: true });
+        fs.writeFileSync(
+          path.join(sessDir, 'session.jsonl'),
+          JSON.stringify({ type: 'session/created', id: 'sess_web_123' }) + '\n',
+          'utf-8'
+        );
+
+        // Instantiate shared session store
+        const store = new DshSharedSessionStore(tempOfficial, tempSuite);
+
+        // 1. List official sessions
+        const official = store.listOfficialSessions();
+        expect(official.length).toBe(1);
+        expect(official[0].id).toBe('sess_web_123');
+        expect(official[0].projectKey).toBe('my-web-project');
+
+        // 2. Save a Suite session into suite_sessions
+        store.saveSession({
+          id: 'sess_tui_456',
+          title: 'TUI Continued Session',
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          workspacePath: '/workspace',
+          model: 'deepseek-reasoner',
+          messages: [],
+          metrics: { promptTokens: 0, completionTokens: 0, totalTokens: 0, tps: 0, contextLimit: 128000, contextUsagePercent: 0 },
+        });
+
+        // 3. List all sessions - must show both Official and Suite sessions
+        const all = store.listSessions();
+        expect(all.length).toBe(2);
+        const officialSummary = all.find((s: any) => s.id === 'sess_web_123');
+        const suiteSummary = all.find((s: any) => s.id === 'sess_tui_456');
+
+        expect(officialSummary?.isOfficial).toBe(true);
+        expect(suiteSummary?.isOfficial).toBe(false);
+
+        // 4. Verify official sessions directory remains strictly untouched
+        const officialFiles = fs.readdirSync(sessDir);
+        expect(officialFiles).toEqual(['session.jsonl']);
+      } finally {
+        fs.rmSync(tempOfficial, { recursive: true, force: true });
+        fs.rmSync(tempSuite, { recursive: true, force: true });
+      }
+    });
+  });
 });
+

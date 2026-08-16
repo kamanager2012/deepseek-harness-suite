@@ -137,7 +137,32 @@ Windows / macOS 统一由 `dsh-community` 官方发布。
 
 ---
 
-# 四、以后版本体系也只存在于 dsh-community
+# 四、核心护城河与用户价值定位：发行版（Distribution）
+
+我们不是另一个普通的桌面壳，而是 **DeepSeek Harness 的社区发行版（Canonical Distribution）**。
+如同 Linux 发行版（Debian/Fedora）之于 Linux Kernel，官方 Runtime 是发动机，我们提供完整的跨端发行与生态治理。
+
+### 四层真实护城河（User Values）：
+
+1. **官方原生兼容（Native Compatibility）**
+   > *“Official DSH, without locking you into another fork.”*
+   > 坚持零源码魔改（Zero Vendoring/Patching），不同于竞品使用 patch-package 修改上游 UI，官方升级零迁移成本与锁定风险。
+
+2. **三端同源一体（One Harness. Three Surfaces）**
+   > *“你在官方 Web 启动的会话，关掉后在 TUI 秒级继续，切到 Desktop 还是同一份会话与工作区。”*
+   > 深度打通 `Official Web ↔ Community Desktop ↔ Community TUI`，均以 `~/.dsh` 作为官方会话真源，多端无损漫游。
+
+3. **可验证插件生态（Verified Ecosystem - Trust over Volume）**
+   > 不盲目与 Awesome 列表比拼 300+ 数量，而是建立 **可验证供应链（Verification Layer）**：
+   > 真实安装烟测、权限静态审查、依赖真实性校验与多版本兼容矩阵（Tested on rc.6），提供 100% 跑通的信任底座。
+
+4. **上游韧性演进（Upstream Resilience）**
+   > *“DeepSeek 明天发 rc.7，我们比你先知道哪里会断，并完成发行兼容修复。”*
+   > 动态契约探针实时捕捉上游变动，为社区提供可预测的平滑升级体验。
+
+---
+
+# 五、以后版本体系也只存在于 dsh-community
 
 不要形成：
 
