@@ -37,7 +37,9 @@
     "test": "vitest run",
     "test:contract": "vitest run __tests__/contract"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@deepseek-ai/dsh-sdk-client": "^0.1.0-rc.6"
+  },
   "devDependencies": {
     "@types/node": "^22.13.4",
     "typescript": "^5.7.3",

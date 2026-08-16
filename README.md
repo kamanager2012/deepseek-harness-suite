@@ -18,7 +18,8 @@
 | **Dynamic Contract CI** | `[REAL]` | Live introspection probe against `dsh --dump-default-config` (128 plugins verified). |
 | **TUI Visual Components** | `[REAL]` | `DiffViewer` (syntax highlighing), `ReasoningBox` (collapsible thought stream), `ToolCard`. |
 | **Smart Risk Evaluator** | `[REAL]` | `DshRiskEvaluator` auto-approves safe read-only tools while strictly gating destructive commands. |
-| **Runtime Execution Transport** | `[REAL]` | `DshRuntimeClient` spawns official headless profile & streams live events into TUI. |
+| **Runtime Execution Transport** | `[REAL]` | `DshRuntimeClient` drives official `@deepseek-ai/dsh-sdk-client` over stdio JSON-RPC. |
+| **Interactive Tool Approval** | `[BLOCKED_BY_UPSTREAM]` | Client-side risk evaluation active; runtime server-to-client approval RPC pending upstream SDK support. |
 | **Session Safety Gate** | `[READ-SAFE]` | Official `~/.dsh/sessions` is strictly **Read-Only** to prevent state corruption; Suite uses `~/.dsh/suite_sessions`. |
 | **Diagnostics & Health** | `[REAL]` | `/doctor` executes five-layer system checks (Node version, process isolation, API keys, token budget). |
 | **Tamper-Evident Audit** | `[REAL]` | `/audit` maintains cryptographic SHA-256 hash chains over every tool invocation & approval decision. |

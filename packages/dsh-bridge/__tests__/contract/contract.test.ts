@@ -131,8 +131,14 @@ describe('DSH Bridge Contract Tests', () => {
 
   describe('Agent Controller State Machine', () => {
     it('manages prompt submission and status transitions', async () => {
+      const mockRuntimeClient = {
+        executeTurn: async () => ({ content: 'Mock refactor output', reasoning: 'Thinking...' }),
+        interrupt: () => {},
+      } as any;
+
       const controller = new DshAgentController({
         config: { model: 'deepseek-chat' },
+        runtimeClient: mockRuntimeClient,
       });
 
       const statuses: string[] = [];
@@ -144,8 +150,9 @@ describe('DSH Bridge Contract Tests', () => {
       await controller.submitPrompt('Refactor the desktop client');
 
       expect(statuses).toContain('thinking');
-      expect(controller.getSession().messages.length).toBeGreaterThanOrEqual(1);
+      expect(controller.getSession().messages.length).toBeGreaterThanOrEqual(2);
       expect(controller.getSession().messages[0].content).toBe('Refactor the desktop client');
+      expect(controller.getSession().messages[1].content).toBe('Mock refactor output');
     });
 
     it('handles interactive approval resolution', async () => {

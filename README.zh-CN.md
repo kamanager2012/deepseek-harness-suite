@@ -22,7 +22,8 @@
 | **动态契约 CI 探针** | `[REAL]` | 真实调用官方命令动态采集 128 个插件行与 CLI flags，防止上游破坏性变更。 |
 | **终端极客视觉组件** | `[REAL]` | `DiffViewer`（行级红绿高亮）、`ReasoningBox`（R1 推理思维折叠）、`ToolCard`。 |
 | **智能免审批引擎** | `[REAL]` | `DshRiskEvaluator` 白名单秒放行只读探查，拦截并弹窗高危破坏指令。 |
-| **运行时调用通道** | `[REAL]` | `DshRuntimeClient` 已接通真实 Headless 子进程并流式归一化推理事件。 |
+| **运行时调用通道** | `[REAL]` | `DshRuntimeClient` 直接驱动官方 `@deepseek-ai/dsh-sdk-client` stdio JSON-RPC 双向通信。 |
+| **交互式工具审批** | `[BLOCKED_BY_UPSTREAM]` | 客户端风控规则完备；官方 SDK 目前尚未开放服务端向客户端发起 Approval RPC 请求通道。 |
 | **敏感与巨大目录防御** | `[REAL]` | `.dshignore` 引擎自动拦截 `.env`、密钥与 `node_modules` 避免被 AI 误读误改。 |
 | **会话存储安全隔离** | `[READ-SAFE]` | 官方 `~/.dsh/sessions` 严格只读；Suite 自建状态安全隔离在 `~/.dsh/suite_sessions/`。 |
 | **回滚与分叉** | `[UI-LEVEL]` | 标明当前为消息历史回退（`/rollback`），待官方 runtime 开放状态回滚 API。 |
