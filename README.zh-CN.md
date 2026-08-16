@@ -1,4 +1,4 @@
-# DeepSeek Harness 社区套件 (DSH-Suite)
+# DeepSeek Harness Community Labs (DSH-Suite)
 
 > ⚡ **以官方运行时为核心（Official-Runtime Centric）** 的 DeepSeek Harness 终端 TUI 与桌面客户端增强套件。
 
@@ -9,6 +9,27 @@
 [![官方基准验证: 0.1.0-rc.6](https://img.shields.io/badge/Official%20DSH-0.1.0--rc.6%20verified-green.svg)](https://www.npmjs.com/package/@deepseek-ai/dsh)
 
 ---
+
+## 生态定位
+
+本仓是 **Community Labs（社区实验舱）**，不是第二个用户产品，也不是下载入口。
+Bridge、SDK transport、安全、Checkpoint、审计和实验性 TUI / Desktop 能力先在这里验证；
+只有通过 Reality Gate、真实 E2E、安全和跨平台验证，才可以进入
+[`dsh-community`](https://github.com/kamanager2012/dsh-community) 的 Canary、Preview 或 Stable。
+
+| 仓库 | 定位 | 入口 |
+|---|---|---|
+| [`dsh-community`](https://github.com/kamanager2012/dsh-community) | Canonical Product，唯一正式下载入口 | [最新 Release](https://github.com/kamanager2012/dsh-community/releases/latest) |
+| [`deepseek-harness-handbook`](https://github.com/kamanager2012/deepseek-harness-handbook) | 知识、证据和运维手册 | [在线手册](https://kamanager2012.github.io/deepseek-harness-handbook/) |
+| [`dsh-community-plugins`](https://github.com/kamanager2012/dsh-community-plugins) | 插件兼容性注册表 | [Registry](https://github.com/kamanager2012/dsh-community-plugins) |
+| [`dsh-marketplace`](https://github.com/kamanager2012/dsh-marketplace) | 插件发现和安装体验 | [Marketplace](https://github.com/kamanager2012/dsh-marketplace) |
+| [`dsh-community-edition`](https://github.com/kamanager2012/dsh-community-edition) | Merge & Archive，合流归档 | [历史参考](https://github.com/kamanager2012/dsh-community-edition) |
+
+执行核心是官方 [DeepSeek Harness Runtime](https://github.com/deepseek-ai/deepseek-harness)。
+Labs 不得重新实现 Agent loop、官方 Session persistence、Tool execution 或官方 core packages。
+
+当前接手基线见 [docs/ECOSYSTEM_HANDOFF.md](docs/ECOSYSTEM_HANDOFF.md)；
+英文版见 [docs/ECOSYSTEM_HANDOFF.en.md](docs/ECOSYSTEM_HANDOFF.en.md)。
 
 ## 🎯 架构设计与真实性声明（Reality Gate）
 

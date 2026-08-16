@@ -1,12 +1,37 @@
-# DeepSeek Harness Community Suite (DSH-Suite)
+# DeepSeek Harness Community Labs (DSH-Suite)
 
 > ⚡ **Official-Runtime Centric** Terminal & Desktop Distributions for DeepSeek Harness.
+
+[简体中文](README.zh-CN.md) | **English**
 
 [![Contract CI](https://github.com/kamanager2012/deepseek-harness-suite/actions/workflows/contract-ci.yml/badge.svg)](https://github.com/kamanager2012/deepseek-harness-suite/actions/workflows/contract-ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Upstream Target: 0.1.0-rc.6](https://img.shields.io/badge/Official%20DSH-0.1.0--rc.6%20verified-green.svg)](https://www.npmjs.com/package/@deepseek-ai/dsh)
 
 ---
+
+## Ecosystem position
+
+This repository is **Community Labs**, not a second user-facing product and not a
+download channel. It is where maintainers validate experimental Bridge, SDK
+transport, security, checkpoint, audit, and TUI / Desktop ideas before a capability
+can pass the Reality Gate and enter [`dsh-community`](https://github.com/kamanager2012/dsh-community)
+as Canary, Preview, or Stable.
+
+| Repository | Role | Link |
+|---|---|---|
+| [`dsh-community`](https://github.com/kamanager2012/dsh-community) | Canonical Product; the only normal download entry | [Latest release](https://github.com/kamanager2012/dsh-community/releases/latest) |
+| [`deepseek-harness-handbook`](https://github.com/kamanager2012/deepseek-harness-handbook) | Knowledge, evidence, and operations | [Online handbook](https://kamanager2012.github.io/deepseek-harness-handbook/) |
+| [`dsh-community-plugins`](https://github.com/kamanager2012/dsh-community-plugins) | Compatibility registry | [Catalog](https://github.com/kamanager2012/dsh-community-plugins) |
+| [`dsh-marketplace`](https://github.com/kamanager2012/dsh-marketplace) | Discovery and install UX | [Repository](https://github.com/kamanager2012/dsh-marketplace) |
+| [`dsh-community-edition`](https://github.com/kamanager2012/dsh-community-edition) | Merge & Archive | [Historical reference](https://github.com/kamanager2012/dsh-community-edition) |
+
+The execution core is the official [DeepSeek Harness Runtime](https://github.com/deepseek-ai/deepseek-harness).
+Labs must not reimplement its Agent loop, official Session persistence, tool
+execution, or core packages.
+
+For the current seam-by-seam handoff, read [docs/ECOSYSTEM_HANDOFF.md](docs/ECOSYSTEM_HANDOFF.md)
+or the [English handoff](docs/ECOSYSTEM_HANDOFF.en.md).
 
 ## 🎯 Reality Gate & Implementation Status
 
@@ -46,9 +71,9 @@ Dynamic Live Contract CI
 
 | Package | Role | Status |
 | :--- | :--- | :--- |
-| [`@dsh-community/dsh-bridge`](./packages/dsh-bridge) | Anti-Corruption Layer, Runtime Client & Process Supervisor | Production Ready |
-| [`@dsh-community/tui`](./apps/tui) | Claude Code level Terminal UX (Ink / Yoga) | Active / Headless Connected |
-| [`@dsh-community/desktop`](./apps/desktop) | Zero-config Desktop Shell (Electron + Subprocess Manager) | Production Ready |
+| [`@dsh-community/dsh-bridge`](./packages/dsh-bridge) | Anti-Corruption Layer, Runtime Client & Process Supervisor | `[PARTIAL]` / Labs |
+| [`@dsh-community/tui`](./apps/tui) | Terminal UX (Ink / Yoga) | `[LABS]` |
+| [`@dsh-community/desktop`](./apps/desktop) | Desktop Shell (Electron + Subprocess Manager) | `[LABS]` |
 
 ---
 
