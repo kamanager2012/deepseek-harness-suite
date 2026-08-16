@@ -33,6 +33,18 @@ execution, or core packages.
 For the current seam-by-seam handoff, read [docs/ECOSYSTEM_HANDOFF.md](docs/ECOSYSTEM_HANDOFF.md)
 or the [English handoff](docs/ECOSYSTEM_HANDOFF.en.md).
 
+## Current evidence snapshot
+
+| Gate | Status | Meaning |
+|---|---|---|
+| Code / build / unit / contract tests | GREEN | The repository test and build path is currently healthy. |
+| Reality Gate adapter / fixture / failure-path tests | GREEN | Shell fail-closed cases, typed `SessionEvent.data`, and pre-enqueue fallback safety have coverage. |
+| Upstream contract probe CI | RED | A local probe passing is not the same as a stable upstream CI job. |
+| True SDK runtime E2E | `[UNVERIFIED]` | The official runtime must still be launched through stdio JSON-RPC with a hard `executionMode === sdk_jsonrpc` assertion and fallback disabled. |
+
+The adapter, fixture, and failure-path tests are real tests of those seams; they do not
+prove a real SDK prompt, event stream, and final response from the official Runtime.
+
 ## 🎯 Reality Gate & Implementation Status
 
 | Capability / Module | Status | Architectural Invariant & Evidence |

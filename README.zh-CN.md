@@ -31,6 +31,17 @@ Labs 不得重新实现 Agent loop、官方 Session persistence、Tool execution
 当前接手基线见 [docs/ECOSYSTEM_HANDOFF.md](docs/ECOSYSTEM_HANDOFF.md)；
 英文版见 [docs/ECOSYSTEM_HANDOFF.en.md](docs/ECOSYSTEM_HANDOFF.en.md)。
 
+## 当前证据快照
+
+| 门禁 | 状态 | 含义 |
+|---|---|---|
+| 代码 / 构建 / 单元 / 契约测试 | GREEN | 当前仓库的构建和测试路径健康。 |
+| Reality Gate adapter / fixture / failure-path 测试 | GREEN | Shell fail-closed、typed `SessionEvent.data` 和 pre-enqueue fallback 安全已有覆盖。 |
+| Upstream contract probe CI | RED | 本地探针通过不等于上游契约 CI 稳定。 |
+| True SDK runtime E2E | `[UNVERIFIED]` | 仍需通过 stdio JSON-RPC 启动官方 Runtime，在禁用 fallback 下硬断言 `executionMode === sdk_jsonrpc`，并取得真实 prompt、事件流和最终响应。 |
+
+Adapter、fixture 和 failure-path 测试分别是真实测试，但不能冒充官方 Runtime 的真实 SDK prompt/E2E。
+
 ## 🎯 架构设计与真实性声明（Reality Gate）
 
 我们坚持 **“Official Source Ownership = 0”** 原则，绝不 Fork 或魔改官方仓库源码，将官方发布包 `@deepseek-ai/dsh` 作为独立外部运行时进行受控调度。
