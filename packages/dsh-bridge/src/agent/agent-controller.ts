@@ -7,10 +7,14 @@ import type {
 } from '../types/index.js';
 import { DshEventStream } from '../events/event-stream.js';
 import { DshSharedSessionStore } from '../session/session-store.js';
+import { DshAuditChain } from '../security/audit-chain.js';
+import { DshDoctor, type DoctorReport } from '../runtime/doctor.js';
+import { DshPluginCatalogClient, type PluginEntry } from '../marketplace/plugin-catalog.js';
 
 export interface AgentControllerOptions {
   config: DshConfig;
   events?: DshEventStream;
+  auditChain?: DshAuditChain;
 }
 
 /**
@@ -21,6 +25,8 @@ export interface AgentControllerOptions {
  */
 export class DshAgentController {
   public readonly events: DshEventStream;
+  public readonly auditChain: DshAuditChain;
+  private pluginClient = new DshPluginCatalogClient();
   private config: DshConfig;
   private currentSession: DshSession | null = null;
   private currentStatus: DshAgentStatus = 'idle';
@@ -29,6 +35,7 @@ export class DshAgentController {
   constructor(options: AgentControllerOptions) {
     this.config = options.config;
     this.events = options.events || new DshEventStream();
+    this.auditChain = options.auditChain || new DshAuditChain();
 
     this.initSession();
     this.setupInternalListeners();
@@ -131,6 +138,15 @@ export class DshAgentController {
     if (resolver) {
       resolver(decision);
       this.pendingApprovals.delete(approvalId);
+      this.auditChain.append({
+        sessionId: this.getSession().id,
+        toolName: approvalId,
+        args: {},
+        riskLevel: 'high',
+        verdict: decision === 'allow_once' ? 'approved_once' : decision === 'allow_always' ? 'approved_always' : 'rejected',
+        reason: `Human decision: ${decision}`,
+        status: decision === 'reject' ? 'failed' : 'success',
+      });
     }
   }
 
@@ -266,5 +282,33 @@ export class DshAgentController {
     }
     this.addSystemMessage(`Session "${sessionId}" not found in ~/.dsh/sessions`);
     return false;
+  }
+
+  /**
+   * Run full system and environmental health diagnostics (/doctor)
+   */
+  public diagnose(runtimeHealth?: any): DoctorReport {
+    return DshDoctor.diagnose(this.config, runtimeHealth, this.getSession().metrics);
+  }
+
+  /**
+   * Format doctor diagnostics report as human readable text
+   */
+  public formatDoctorReport(report: DoctorReport): string {
+    return DshDoctor.formatReport(report);
+  }
+
+  /**
+   * Search community and official plugin catalog
+   */
+  public async searchPlugins(query = ''): Promise<PluginEntry[]> {
+    return this.pluginClient.searchPlugins(query);
+  }
+
+  /**
+   * Format plugin list for display in TUI
+   */
+  public formatPluginList(plugins: PluginEntry[]): string {
+    return this.pluginClient.formatPluginList(plugins, this.config.runtimeVersion || '0.1.0-rc.8');
   }
 }

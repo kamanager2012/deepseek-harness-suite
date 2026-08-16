@@ -6,3 +6,6 @@ export * from './runtime/subprocess-manager.js';
 export * from './runtime/version-manager.js';
 export * from './session/session-store.js';
 export * from './security/risk-evaluator.js';
+export * from './security/audit-chain.js';
+export * from './marketplace/plugin-catalog.js';
+export * from './runtime/doctor.js';

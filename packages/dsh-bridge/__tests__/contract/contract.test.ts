@@ -7,6 +7,9 @@ import { DshAgentController } from '../../src/agent/agent-controller.js';
 import { DshSubprocessManager } from '../../src/runtime/subprocess-manager.js';
 import { DshContextGuard } from '../../src/agent/context-guard.js';
 import { DshSharedSessionStore } from '../../src/session/session-store.js';
+import { DshAuditChain } from '../../src/security/audit-chain.js';
+import { DshDoctor } from '../../src/runtime/doctor.js';
+import { DshPluginCatalogClient } from '../../src/marketplace/plugin-catalog.js';
 import type { DshEvent } from '../../src/types/index.js';
 
 describe('DSH Bridge Contract Tests', () => {
@@ -273,6 +276,65 @@ describe('DSH Bridge Contract Tests', () => {
       } finally {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
+    });
+  });
+
+  describe('Tamper-Evident Audit Chain', () => {
+    it('cryptographically chains execution records and detects tampering', () => {
+      const chain = new DshAuditChain();
+
+      const r1 = chain.append({
+        sessionId: 'sess_1',
+        toolName: 'read_file',
+        args: { path: '/tmp/test.ts' },
+        riskLevel: 'low',
+        verdict: 'auto_approved',
+      });
+
+      const r2 = chain.append({
+        sessionId: 'sess_1',
+        toolName: 'bash',
+        args: { command: 'rm -rf /tmp/build' },
+        riskLevel: 'critical',
+        verdict: 'approved_once',
+      });
+
+      expect(chain.getRecords()).toHaveLength(2);
+      expect(r2.prevHash).toBe(r1.hash);
+
+      const verification = chain.verify();
+      expect(verification.valid).toBe(true);
+    });
+  });
+
+  describe('Five-Layer Environment Doctor', () => {
+    it('runs comprehensive diagnostics and formats readable health reports', () => {
+      const report = DshDoctor.diagnose(
+        { model: 'deepseek-reasoner', apiKey: 'sk-mock-key' },
+        { running: true, pid: 12345, uptimeSeconds: 42 },
+        { promptTokens: 2000, completionTokens: 500, totalTokens: 2500, tps: 45, contextLimit: 128000, contextUsagePercent: 1.95 }
+      );
+
+      expect(report.overallStatus).toBe('healthy');
+      expect(report.checks.length).toBeGreaterThanOrEqual(4);
+
+      const text = DshDoctor.formatReport(report);
+      expect(text).toContain('DeepSeek Harness System Health Report');
+      expect(text).toContain('Node.js Runtime Version');
+    });
+  });
+
+  describe('Community Plugin Marketplace Discovery', () => {
+    it('searches and formats community plugins from registry', async () => {
+      const client = new DshPluginCatalogClient();
+      const plugins = await client.searchPlugins('context');
+
+      expect(plugins.length).toBeGreaterThan(0);
+      expect(plugins[0].name).toContain('context');
+
+      const formatted = client.formatPluginList(plugins, '0.1.0-rc.8');
+      expect(formatted).toContain('DSH Community Plugin Marketplace');
+      expect(formatted).toContain('dsh plugin add');
     });
   });
 });

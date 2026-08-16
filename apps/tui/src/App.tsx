@@ -76,6 +76,34 @@ export const App: React.FC<AppProps> = ({ controller }) => {
       return;
     }
 
+    if (text.startsWith('/doctor')) {
+      const report = controller.diagnose();
+      const reportText = controller.formatDoctorReport(report);
+      controller.addSystemMessage(reportText);
+      return;
+    }
+
+    if (text.startsWith('/plugins')) {
+      const parts = text.split(' ');
+      const query = parts.slice(1).join(' ').trim();
+      const plugins = await controller.searchPlugins(query);
+      const outputText = controller.formatPluginList(plugins);
+      controller.addSystemMessage(outputText);
+      return;
+    }
+
+    if (text.startsWith('/audit')) {
+      const records = controller.auditChain.getRecords();
+      const verifyResult = controller.auditChain.verify();
+      const auditText = records.length === 0
+        ? 'No tool executions or security decisions recorded yet in this session.'
+        : `🛡️ Tamper-Evident Audit Chain (${records.length} records, Integrity: ${verifyResult.valid ? '✅ VERIFIED' : '❌ CORRUPTED'}):\n\n` +
+          records.slice(-5).map(r => `[#${r.seq} | ${new Date(r.timestamp).toISOString().slice(11, 19)}] ${r.toolName} -> ${r.verdict} (${r.riskLevel.toUpperCase()}) | SHA: ${r.hash.slice(0, 12)}...`).join('\n');
+      
+      controller.addSystemMessage(auditText);
+      return;
+    }
+
     await submitPrompt(text);
   };
 
