@@ -55,14 +55,7 @@ export const App: React.FC<AppProps> = ({ controller }) => {
         ? 'No past sessions found in ~/.dsh/sessions' 
         : `Recent sessions in ~/.dsh/sessions:\n` + list.slice(0, 5).map(s => `  • ${s.id} - ${s.title} (${s.messageCount} msgs, ${s.model})`).join('\n') + `\n\nUse /resume <id> to resume.`;
       
-      session.messages.push({
-        id: `sys_${Date.now()}`,
-        role: 'system',
-        content: summaryText,
-        timestamp: Date.now(),
-        status: 'complete',
-      });
-      controller.events.emitEvent({ type: 'session:updated', session });
+      controller.addSystemMessage(summaryText);
       return;
     }
 
@@ -70,45 +63,16 @@ export const App: React.FC<AppProps> = ({ controller }) => {
       const parts = text.split(' ');
       const targetId = parts[1]?.trim();
       if (!targetId) {
-        session.messages.push({
-          id: `sys_${Date.now()}`,
-          role: 'system',
-          content: 'Usage: /resume <session_id>',
-          timestamp: Date.now(),
-          status: 'complete',
-        });
-        controller.events.emitEvent({ type: 'session:updated', session });
+        controller.addSystemMessage('Usage: /resume <session_id>');
         return;
       }
 
-      const store = new DshSharedSessionStore();
-      const loaded = store.readSession(targetId);
-      if (loaded) {
-        controller.loadSession(loaded);
-      } else {
-        session.messages.push({
-          id: `sys_${Date.now()}`,
-          role: 'system',
-          content: `Session "${targetId}" not found in ~/.dsh/sessions`,
-          timestamp: Date.now(),
-          status: 'complete',
-        });
-        controller.events.emitEvent({ type: 'session:updated', session });
-      }
+      controller.resumeSessionById(targetId);
       return;
     }
 
     if (text.startsWith('/save')) {
-      const store = new DshSharedSessionStore();
-      store.saveSession(session);
-      session.messages.push({
-        id: `sys_${Date.now()}`,
-        role: 'system',
-        content: `Session successfully saved to ~/.dsh/sessions/${session.id}.json`,
-        timestamp: Date.now(),
-        status: 'complete',
-      });
-      controller.events.emitEvent({ type: 'session:updated', session });
+      controller.saveCurrentSession();
       return;
     }
 

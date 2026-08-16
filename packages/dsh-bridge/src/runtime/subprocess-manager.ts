@@ -84,11 +84,12 @@ export class DshSubprocessManager {
 
     this.appendLog(`[SUPERVISOR] Spawning: ${executable} ${args.join(' ')} (CWD: ${cwd})`);
 
+    const isPosix = process.platform !== 'win32';
     const child = spawn(executable, args, {
       cwd,
       env,
       stdio: ['pipe', 'pipe', 'pipe'],
-      detached: false,
+      detached: isPosix,
     });
 
     this.child = child;

@@ -6,8 +6,10 @@
   "type": "module",
   "scripts": {
     "build": "pnpm --filter \"./packages/*\" --filter \"./apps/*\" build",
-    "test": "pnpm --filter \"./packages/*\" test && vitest run contracts/tests",
+    "test": "pnpm --filter @dsh-community/dsh-bridge test && vitest run contracts/tests",
+    "test:bridge": "pnpm --filter @dsh-community/dsh-bridge test",
     "test:contracts": "vitest run contracts/tests",
+    "check:contracts": "tsx scripts/contract-checker.ts",
     "dev:tui": "pnpm --filter @dsh-community/tui dev",
     "dev:desktop": "pnpm --filter @dsh-community/desktop dev",
     "clean": "pnpm -r exec rm -rf dist node_modules"

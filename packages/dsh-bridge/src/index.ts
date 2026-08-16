@@ -5,3 +5,4 @@ export * from './agent/context-guard.js';
 export * from './runtime/subprocess-manager.js';
 export * from './runtime/version-manager.js';
 export * from './session/session-store.js';
+export * from './security/risk-evaluator.js';

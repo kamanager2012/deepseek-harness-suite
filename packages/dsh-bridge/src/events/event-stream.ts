@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events';
 import type { DshEvent, DshAgentStatus, DshApprovalRequest, DshToolCall, DshUsageMetrics } from '../types/index.js';
+import { DshRiskEvaluator } from '../security/risk-evaluator.js';
 
 export type DshEventListener<T extends DshEvent = DshEvent> = (event: T) => void;
 
@@ -100,12 +101,21 @@ export class DshEventStream {
 
       case 'tool.call':
       case 'tool.invoke': {
+        const name = rawEvent.name || rawEvent.tool || 'unknown_tool';
+        const args = rawEvent.args || rawEvent.arguments || {};
+        const explicitApproval = rawEvent.requiresApproval;
+
+        // Auto-approve safe read-only operations; require approval for destructive or high-risk tasks
+        const evaluation = DshRiskEvaluator.evaluate(name, args, explicitApproval, (rawEvent.approvalPolicy || 'auto_safe'));
+        const riskLevel = rawEvent.riskLevel || evaluation.riskLevel;
+        const requiresApproval = evaluation.requiresApproval;
+
         const toolCall: DshToolCall = {
           id: rawEvent.id || String(Date.now()),
-          name: rawEvent.name || rawEvent.tool || 'unknown_tool',
-          args: rawEvent.args || rawEvent.arguments || {},
-          status: rawEvent.requiresApproval ? 'pending_approval' : 'running',
-          riskLevel: rawEvent.riskLevel || (rawEvent.name?.includes('bash') || rawEvent.name?.includes('exec') ? 'high' : 'low'),
+          name,
+          args,
+          status: requiresApproval ? 'pending_approval' : 'running',
+          riskLevel,
           diff: rawEvent.diff,
           startedAt: Date.now(),
         };
@@ -115,11 +125,11 @@ export class DshEventStream {
           toolCall,
         });
 
-        if (rawEvent.requiresApproval) {
+        if (requiresApproval) {
           const approval: DshApprovalRequest = {
             id: `appr_${toolCall.id}`,
             toolCall,
-            promptMessage: rawEvent.promptMessage || `Approve tool execution: ${toolCall.name}`,
+            promptMessage: rawEvent.promptMessage || `Approve tool execution: ${toolCall.name}${evaluation.reason ? ` (${evaluation.reason})` : ''}`,
             riskLevel: toolCall.riskLevel,
             timestamp: Date.now(),
           };

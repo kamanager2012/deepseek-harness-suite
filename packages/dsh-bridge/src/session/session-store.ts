@@ -43,6 +43,7 @@ export class DshSharedSessionStore {
     const summaries: DshSessionSummary[] = [];
 
     for (const file of files) {
+      if (file.startsWith('.')) continue;
       if (file.endsWith('.json') || file.endsWith('.jsonl')) {
         const fullPath = path.join(this.sessionsDir, file);
         try {
@@ -145,11 +146,20 @@ export class DshSharedSessionStore {
   }
 
   /**
-   * Save session to ~/.dsh/sessions in standard format
+   * Save session to ~/.dsh/sessions in standard format atomically
    */
   public saveSession(session: DshSession): void {
+    if (!fs.existsSync(this.sessionsDir)) {
+      fs.mkdirSync(this.sessionsDir, { recursive: true });
+    }
     const filePath = path.join(this.sessionsDir, `${session.id}.json`);
-    fs.writeFileSync(filePath, JSON.stringify(session, null, 2), 'utf-8');
+    const tempPath = path.join(
+      this.sessionsDir,
+      `.${session.id}.${Date.now()}.${Math.random().toString(36).slice(2, 7)}.tmp`
+    );
+
+    fs.writeFileSync(tempPath, JSON.stringify(session, null, 2), 'utf-8');
+    fs.renameSync(tempPath, filePath);
   }
 
   /**

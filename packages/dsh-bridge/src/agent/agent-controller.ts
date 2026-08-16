@@ -6,6 +6,7 @@ import type {
   DshAgentStatus 
 } from '../types/index.js';
 import { DshEventStream } from '../events/event-stream.js';
+import { DshSharedSessionStore } from '../session/session-store.js';
 
 export interface AgentControllerOptions {
   config: DshConfig;
@@ -218,5 +219,52 @@ export class DshAgentController {
       type: 'session:updated',
       session: this.currentSession,
     });
+  }
+
+  /**
+   * Append a system notification/log message to the current session
+   */
+  public addSystemMessage(content: string): DshMessage {
+    const session = this.getSession();
+    const sysMsg: DshMessage = {
+      id: `sys_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      role: 'system',
+      content,
+      timestamp: Date.now(),
+      status: 'complete',
+    };
+    session.messages.push(sysMsg);
+    session.updatedAt = Date.now();
+    this.events.emitEvent({
+      type: 'session:updated',
+      session,
+    });
+    return sysMsg;
+  }
+
+  /**
+   * Save the active session to the shared session store
+   */
+  public saveCurrentSession(store?: DshSharedSessionStore): string {
+    const sessionStore = store || new DshSharedSessionStore();
+    const session = this.getSession();
+    sessionStore.saveSession(session);
+    this.addSystemMessage(`Session successfully saved to ~/.dsh/sessions/${session.id}.json`);
+    return session.id;
+  }
+
+  /**
+   * Resume an existing session by ID
+   */
+  public resumeSessionById(sessionId: string, store?: DshSharedSessionStore): boolean {
+    const sessionStore = store || new DshSharedSessionStore();
+    const loaded = sessionStore.readSession(sessionId);
+    if (loaded) {
+      this.loadSession(loaded);
+      this.addSystemMessage(`Resumed session "${sessionId}" (${loaded.title})`);
+      return true;
+    }
+    this.addSystemMessage(`Session "${sessionId}" not found in ~/.dsh/sessions`);
+    return false;
   }
 }

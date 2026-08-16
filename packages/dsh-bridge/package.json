@@ -25,6 +25,10 @@
     "./runtime": {
       "types": "./dist/runtime/subprocess-manager.d.ts",
       "import": "./dist/runtime/subprocess-manager.js"
+    },
+    "./security": {
+      "types": "./dist/security/risk-evaluator.d.ts",
+      "import": "./dist/security/risk-evaluator.js"
     }
   },
   "scripts": {

@@ -1,8 +1,12 @@
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import * as os from 'node:os';
 import { describe, it, expect, vi } from 'vitest';
 import { DshEventStream } from '../../src/events/event-stream.js';
 import { DshAgentController } from '../../src/agent/agent-controller.js';
 import { DshSubprocessManager } from '../../src/runtime/subprocess-manager.js';
 import { DshContextGuard } from '../../src/agent/context-guard.js';
+import { DshSharedSessionStore } from '../../src/session/session-store.js';
 import type { DshEvent } from '../../src/types/index.js';
 
 describe('DSH Bridge Contract Tests', () => {
@@ -27,25 +31,63 @@ describe('DSH Bridge Contract Tests', () => {
       });
     });
 
-    it('normalizes tool requests and auto-detects approval requirements', () => {
+    it('auto-approves safe read-only tools without prompting for approval', () => {
+      const stream = new DshEventStream();
+      const events: DshEvent[] = [];
+      stream.onEvent((e) => events.push(e));
+
+      // Safe read-only inspection tool
+      stream.projectRawUpstreamEvent({
+        type: 'tool.call',
+        id: 'call_safe_1',
+        name: 'read_file',
+        args: { path: '/home/project/src/main.ts' },
+      });
+
+      expect(events).toHaveLength(1);
+      expect(events[0].type).toBe('tool:requested');
+      if (events[0].type === 'tool:requested') {
+        expect(events[0].toolCall.status).toBe('running');
+        expect(events[0].toolCall.riskLevel).toBe('low');
+      }
+
+      // Safe shell inspection command
+      const stream2 = new DshEventStream();
+      const events2: DshEvent[] = [];
+      stream2.onEvent((e) => events2.push(e));
+
+      stream2.projectRawUpstreamEvent({
+        type: 'tool.call',
+        id: 'call_safe_2',
+        name: 'run_command',
+        args: { command: 'git status' },
+      });
+
+      expect(events2).toHaveLength(1);
+      expect(events2[0].type).toBe('tool:requested');
+      if (events2[0].type === 'tool:requested') {
+        expect(events2[0].toolCall.status).toBe('running');
+        expect(events2[0].toolCall.riskLevel).toBe('low');
+      }
+    });
+
+    it('requires human approval for dangerous, destructive, or mutating shell commands', () => {
       const stream = new DshEventStream();
       const events: DshEvent[] = [];
       stream.onEvent((e) => events.push(e));
 
       stream.projectRawUpstreamEvent({
         type: 'tool.call',
-        id: 'call_123',
+        id: 'call_danger_1',
         name: 'bash_execute',
         args: { command: 'rm -rf /tmp/test' },
-        requiresApproval: true,
-        riskLevel: 'high',
       });
 
       expect(events).toHaveLength(2);
       expect(events[0].type).toBe('tool:requested');
       expect(events[1].type).toBe('tool:approval_needed');
       if (events[1].type === 'tool:approval_needed') {
-        expect(events[1].approval.riskLevel).toBe('high');
+        expect(events[1].approval.riskLevel).toBe('critical');
         expect(events[1].approval.toolCall.name).toBe('bash_execute');
       }
     });
@@ -173,6 +215,64 @@ describe('DSH Bridge Contract Tests', () => {
       });
       expect(critical.isCritical).toBe(true);
       expect(critical.recommendation).toBe('fork_session');
+    });
+  });
+
+  describe('Shared Session Store & Atomic Writes', () => {
+    it('saves and reads sessions atomically without leaving temporary artifacts', () => {
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-session-test-'));
+      try {
+        const store = new DshSharedSessionStore(tempDir);
+        const session = {
+          id: 'test_session_123',
+          title: 'Atomic Test Session',
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          workspacePath: '/tmp/workspace',
+          model: 'deepseek-reasoner',
+          messages: [{ id: 'm1', role: 'user' as const, content: 'Hello', timestamp: Date.now(), status: 'complete' as const }],
+          metrics: { promptTokens: 10, completionTokens: 20, totalTokens: 30, tps: 15, contextLimit: 128000, contextUsagePercent: 0.1 },
+        };
+
+        store.saveSession(session);
+
+        const readBack = store.readSession('test_session_123');
+        expect(readBack).not.toBeNull();
+        expect(readBack?.title).toBe('Atomic Test Session');
+
+        const files = fs.readdirSync(tempDir);
+        expect(files).toContain('test_session_123.json');
+        expect(files.filter(f => f.endsWith('.tmp'))).toHaveLength(0);
+
+        const list = store.listSessions();
+        expect(list).toHaveLength(1);
+        expect(list[0].id).toBe('test_session_123');
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it('handles controller system notifications and session resume helper', () => {
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-controller-test-'));
+      try {
+        const store = new DshSharedSessionStore(tempDir);
+        const controller = new DshAgentController({ config: {} });
+
+        controller.addSystemMessage('System initialized');
+        expect(controller.getSession().messages).toHaveLength(1);
+        expect(controller.getSession().messages[0].role).toBe('system');
+        expect(controller.getSession().messages[0].content).toBe('System initialized');
+
+        const savedId = controller.saveCurrentSession(store);
+        expect(savedId).toBe(controller.getSession().id);
+
+        const newController = new DshAgentController({ config: {} });
+        const resumed = newController.resumeSessionById(savedId, store);
+        expect(resumed).toBe(true);
+        expect(newController.getSession().id).toBe(savedId);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
     });
   });
 });

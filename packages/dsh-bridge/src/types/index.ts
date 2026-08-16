@@ -97,6 +97,7 @@ export interface DshConfig {
   workspacePath?: string;
   port?: number;
   sandboxMode?: 'strict' | 'workspace_only' | 'unrestricted';
+  approvalPolicy?: 'auto_safe' | 'strict' | 'unrestricted';
   runtimeVersion?: string;
   customPlugins?: string[];
 }
