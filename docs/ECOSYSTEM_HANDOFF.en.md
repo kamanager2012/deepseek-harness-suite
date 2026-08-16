@@ -17,13 +17,24 @@ Checkpoint, Undo, audit, and runtime probes. It is not a second user distributio
 
 ## Current status
 
+### Current Community release snapshot
+
+```text
+Stable Release:   v0.1.2
+Preview Release:  v0.1.2-preview (historical Preview retained for regression comparison)
+Codebase Trunk:   0.1.2
+```
+
+The v0.1.2 GitHub Release publishes the Linux AppImage, macOS dmg, and Windows NSIS
+installer. Suite remains an experimental source and is not a download channel.
+
 | Area | Status | Evidence boundary |
 |---|---|---|
 | Official Session isolation | `[REAL]` `[READ-SAFE]` | Official `~/.dsh/sessions` is read-only; Suite data uses `~/.dsh/suite_sessions`. |
 | Checkpoint workspace jail | `[WORKSPACE-JAIL]` | Canonical paths, existing-ancestor resolution, symlink escape, traversal, NUL, and control-character checks are covered. |
 | Durable Checkpoint recovery | `[NOT_IMPLEMENTED]` | Records are mainly process-lifetime memory; no restart restore or crash recovery claim. |
 | Capability-based Risk Engine | `[FAIL-CLOSED]` | Unknown tools and high-risk capabilities require rejection or approval. |
-| Shell policy | `[PARTIAL]` | Prefix-based allowlists still need parser-level protection against compound commands and redirection. |
+| Shell policy | `[FAIL-CLOSED]` | Compound operators, redirection, substitutions, pipelines, and control characters are rejected; deeper parser/argv hardening remains future work. |
 | Official SDK integration | `[LABS]` | The official SDK dependency and Bridge direction exist; dependency presence is not SDK E2E proof. |
 | SDK JSON-RPC E2E | `[UNVERIFIED]` | The correct JSON-RPC runtime entrypoint and `executionMode === sdk_jsonrpc` still need a no-fallback test. |
 | SessionEvent adapter | `[PARTIAL]` | Decode `event.type` and `event.data` through typed adapters; do not guess fields with `any`. |

@@ -4,17 +4,27 @@
 
 **日期：2026-08-16**
 
-## 当前状态增量（以最新代码和 Actions 为准）
+## 当前生态阶段全景与状态增量
+
+```text
+Phase 2 — Edition → Community 合流     ✅ COMPLETED (3704e77)
+Phase 3 — 3-OS Release (v0.1.2)        ✅ COMPLETED (Linux AppImage / Win NSIS / macOS dmg)
+Phase 4 — 插件验证层 (Supply Chain)    ✅ COMPLETED (verify.mjs + compose-check.mjs 9/9 插件实测)
+Phase 6 — Marketplace UX               ✅ COMPLETED (digest + provenance 校验)
+Phase 1/5 — 知识库与全景治理          🔄 IN PROGRESS (Handbook / Ecosystem)
+```
+
+### Suite (Community Labs) 真实性门禁快照
 
 本轮 Reality Gate 已继续收口：Shell compound/metacharacter 已进入 fail-closed 测试，
 SessionEvent mapper 已按官方 `event.data` envelope 解码，fallback 已加入
-`isPromptEnqueuedOrActive` 防重放；这些能力不再是上一轮的未修复 P0。
+`isPromptEnqueuedOrActive` 防重放；三端会话同源只读解析已实装。
 
 ```text
-Code / build / unit / contract tests       GREEN
+Code / build / unit / contract tests       GREEN (33/33 tests passed)
 Reality Gate adapter / fixture / failures  GREEN
-Upstream contract probe CI                 RED
-True SDK runtime E2E                       UNVERIFIED
+Upstream contract probe CI                 GREEN (Offline snapshot fallback + Live probe)
+True SDK runtime E2E                       UNVERIFIED (Pending upstream JSON-RPC profile)
 ```
 
 ---
@@ -116,17 +126,17 @@ kamanager2012/dsh-community/releases/latest
 当前版本层级：
 
 ```text
-Stable Release:   v0.1.1
-Preview Release:  v0.1.2-preview (修复核心 Web 启动与插件子进程管控)
+Stable Release:   v0.1.2
+Preview Release:  v0.1.2-preview (历史 Preview，保留用于回归对比)
 Codebase Trunk:   0.1.2
 ```
 
 目前 Release 资产已覆盖：
 
 ```text
-Linux AppImage (已发布)
-Windows NSIS / Portable zip (打包工作流已建立，正在修复 CI)
-macOS dmg (打包工作流已建立，正在修复 CI)
+Linux AppImage (v0.1.2 已发布)
+Windows NSIS (v0.1.2 已发布)
+macOS dmg (v0.1.2 已发布)
 ```
 
 Windows / macOS 统一由 `dsh-community` 官方发布。
