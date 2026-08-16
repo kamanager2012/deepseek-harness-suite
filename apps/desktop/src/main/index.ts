@@ -55,9 +55,23 @@ app.on('window-all-closed', () => {
   }
 });
 
-app.on('before-quit', async () => {
+const cleanup = async () => {
   trayManager?.destroy();
   if (runtimeManager) {
     await runtimeManager.stop();
   }
+};
+
+process.on('SIGINT', async () => {
+  await cleanup();
+  app.exit(0);
+});
+
+process.on('SIGTERM', async () => {
+  await cleanup();
+  app.exit(0);
+});
+
+app.on('before-quit', async () => {
+  await cleanup();
 });

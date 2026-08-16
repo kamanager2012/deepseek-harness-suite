@@ -24,9 +24,15 @@ Options:
   -v, --version         Show version information
 
 In-session Commands:
-  /sessions             List past sessions stored in ~/.dsh/sessions
+  /doctor               Run five-layer system and environment health diagnostics
+  /plugins [search]     Browse and discover verified plugins from community marketplace
+  /audit                Inspect cryptographic SHA-256 tamper-evident execution audit chain
+  /provider [switch]    Inspect or switch model provider (DeepSeek, SiliconFlow, Ollama, etc.)
+  /undo                 Roll back the latest file modification checkpoint
+  /export [md|json]     Export structured conversation report
+  /sessions             List sessions from store
   /resume <id>          Resume a past session
-  /save                 Save current session to shared store
+  /save                 Save current session atomically
   /rollback [index]     Rewind conversation turns
   /fork                 Branch conversation from current turn
   /exit, /quit          Exit TUI
@@ -47,6 +53,11 @@ In-session Commands:
   return { model, workspacePath };
 }
 
+function restoreTerminal() {
+  // Ensure terminal cursor is restored and alternate screen is exited
+  process.stdout.write('\u001B[?25h');
+}
+
 async function main() {
   const { model, workspacePath } = parseArgs();
 
@@ -59,11 +70,38 @@ async function main() {
     },
   });
 
-  const { waitUntilExit } = render(<App controller={controller} />);
-  await waitUntilExit();
+  const cleanup = () => {
+    controller.interrupt();
+    restoreTerminal();
+  };
+
+  process.on('SIGINT', () => {
+    cleanup();
+    process.exit(0);
+  });
+
+  process.on('SIGTERM', () => {
+    cleanup();
+    process.exit(0);
+  });
+
+  process.on('exit', () => {
+    restoreTerminal();
+  });
+
+  const { waitUntilExit } = render(<App controller={controller} />, {
+    exitOnCtrlC: true,
+  });
+
+  try {
+    await waitUntilExit();
+  } finally {
+    cleanup();
+  }
 }
 
 main().catch((err) => {
+  restoreTerminal();
   console.error('Fatal TUI error:', err);
   process.exit(1);
 });
