@@ -55,27 +55,19 @@ const KNOWN_SAFE_READ_TOOLS: Record<string, ToolCapability[]> = {
   'contract_checker': ['process:exec'],
 };
 
-const SAFE_SHELL_COMMAND_PREFIXES = [
-  'git status',
-  'git log',
-  'git diff',
-  'git show',
-  'git branch',
-  'ls',
-  'pwd',
-  'cat ',
-  'head ',
-  'tail ',
-  'echo ',
-  'which ',
-  'node -v',
-  'pnpm -v',
-  'npm -v',
-  'tsc --noEmit',
-  'pnpm test',
-  'vitest run',
-  'tsx scripts/',
-];
+// Disallowed tokens in any auto-approved single shell command
+const SHELL_COMPOUND_METACHARS = /[;&|`$><\n\r()]/;
+
+const SAFE_GIT_SUBCOMMANDS = new Set([
+  'status',
+  'log',
+  'diff',
+  'show',
+  'branch',
+  'remote',
+  'tag',
+  'describe',
+]);
 
 /**
  * Capability-Driven Tool Risk & Policy Evaluator
@@ -83,10 +75,59 @@ const SAFE_SHELL_COMMAND_PREFIXES = [
  * Enforces strict capability semantics:
  * - Prefers explicit ToolDescriptor capability declarations over heuristic inference.
  * - **Fail-Closed on Unknown**: Any unrecognized or unclassified tool defaults to high-risk and requires approval.
+ * - **Fail-Closed on Shell Commands**: Rejects startsWith matching; strictly disallows compound operators (&&, ;, |, >, <, $())
+ *   and limits auto-safe approval strictly to verified single-command read-only binaries.
  * - Enforces credential and sensitive path protection (.dshignore).
- * - Dissects command lines for destructive, irreversible, or privileged side-effects.
  */
 export class DshRiskEvaluator {
+  /**
+   * Determine if a shell command is strictly a single, non-mutating, non-redirected read-only command
+   */
+  public static isStrictReadOnlyShellCommand(commandStr: string): boolean {
+    const trimmed = (commandStr || '').trim();
+    if (!trimmed) return false;
+
+    // 1. Fail immediately on any compound operator, pipe, redirection, subshell or substitution
+    if (SHELL_COMPOUND_METACHARS.test(trimmed)) {
+      return false;
+    }
+
+    const tokens = trimmed.split(/\s+/);
+    const binary = tokens[0].toLowerCase();
+
+    // 2. Safe single utilities without arguments or with safe arguments
+    if (binary === 'pwd' || binary === 'whoami' || binary === 'which') {
+      return true;
+    }
+
+    if (binary === 'ls') {
+      return true;
+    }
+
+    if (binary === 'cat' || binary === 'head' || binary === 'tail') {
+      // Must not target sensitive files (checked by caller)
+      return true;
+    }
+
+    if (binary === 'node' && tokens[1] === '-v') return true;
+    if (binary === 'npm' && tokens[1] === '-v') return true;
+    if (binary === 'pnpm' && tokens[1] === '-v') return true;
+    if (binary === 'tsc' && tokens[1] === '--noEmit') return true;
+    if (binary === 'vitest' && tokens[1] === 'run') return true;
+
+    // 3. Git read-only subcommands
+    if (binary === 'git' && tokens[1]) {
+      const subcommand = tokens[1].toLowerCase();
+      if (SAFE_GIT_SUBCOMMANDS.has(subcommand)) {
+        // Ensure no mutating flags like -f or --force in git diff/branch
+        const hasForce = tokens.some(t => t === '-f' || t === '--force' || t === '-D');
+        return !hasForce;
+      }
+    }
+
+    return false;
+  }
+
   /**
    * Infer capabilities from tool descriptor or heuristic argument inspection
    */
@@ -222,7 +263,7 @@ export class DshRiskEvaluator {
       }
     }
 
-    // 4. Process execution & command inspection
+    // 4. Process execution & strict shell inspection
     const commandStr = String(args.command || args.cmd || args.script || args.CommandLine || '');
     if (commandStr) {
       for (const pattern of CRITICAL_COMMAND_PATTERNS) {
@@ -236,23 +277,23 @@ export class DshRiskEvaluator {
         }
       }
 
-      // Check if command matches known safe read-only CLI prefixes
-      const trimmed = commandStr.trim();
-      if (SAFE_SHELL_COMMAND_PREFIXES.some((prefix) => trimmed.startsWith(prefix))) {
+      // Check if command is strictly a safe, non-compound read-only shell command
+      const isStrictSafe = this.isStrictReadOnlyShellCommand(commandStr);
+      if (isStrictSafe) {
         return {
           riskLevel: 'low',
           requiresApproval: false,
           capabilities: ['fs:read'],
-          reason: `Safe read-only inspection command: "${trimmed.slice(0, 35)}"`,
+          reason: `Strict read-only inspection command verified: "${commandStr.trim().slice(0, 35)}"`,
         };
       }
 
-      // Arbitrary non-whitelisted command requires approval
+      // Any compound command (&&, ;, |, >), unlisted binary, or modifying CLI command requires approval
       return {
         riskLevel: 'high',
         requiresApproval: true,
         capabilities: ['process:exec'],
-        reason: `Arbitrary shell command execution: "${trimmed.slice(0, 35)}"`,
+        reason: `Compound or unverified shell command requires human approval: "${commandStr.trim().slice(0, 35)}"`,
       };
     }
 

@@ -94,6 +94,28 @@ describe('DSH Bridge Contract Tests', () => {
       expect(eval2.requiresApproval).toBe(false);
     });
 
+    it('rejects compound shell commands, pipes, and file redirections from auto-safe bypass', () => {
+      // 1. Compound chaining (&&)
+      const evalCompound = DshRiskEvaluator.evaluate('run_command', { command: 'git status && touch hacked.txt' });
+      expect(evalCompound.riskLevel).toBe('high');
+      expect(evalCompound.requiresApproval).toBe(true);
+
+      // 2. Output redirection (>)
+      const evalRedirect = DshRiskEvaluator.evaluate('run_command', { command: 'echo hello > important.txt' });
+      expect(evalRedirect.riskLevel).toBe('high');
+      expect(evalRedirect.requiresApproval).toBe(true);
+
+      // 3. Pipe operator (|)
+      const evalPipe = DshRiskEvaluator.evaluate('run_command', { command: 'ls | grep secret' });
+      expect(evalPipe.riskLevel).toBe('high');
+      expect(evalPipe.requiresApproval).toBe(true);
+
+      // 4. Pure single read-only command (should auto-approve)
+      const evalSafeGit = DshRiskEvaluator.evaluate('run_command', { command: 'git status' });
+      expect(evalSafeGit.riskLevel).toBe('low');
+      expect(evalSafeGit.requiresApproval).toBe(false);
+    });
+
     it('normalizes TPS and token usage metrics', () => {
       const stream = new DshEventStream();
       let capturedMetrics: any = null;

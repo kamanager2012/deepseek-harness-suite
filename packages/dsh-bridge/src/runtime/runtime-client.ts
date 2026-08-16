@@ -21,15 +21,17 @@ export interface RuntimeExecutionResult {
   sessionId?: string;
   toolCalls?: DshToolCall[];
   tokensUsed?: { prompt: number; completion: number; total: number };
-  executionMode?: 'sdk_jsonrpc' | 'headless_cli';
+  executionMode: 'sdk_jsonrpc' | 'headless_cli';
 }
 
 /**
  * Official DSH Runtime Execution Client (over @deepseek-ai/dsh-sdk-client)
  * 
  * Drives DeepSeek Harness runtime subprocess over stdio JSON-RPC using the
- * official TypeScript SDK client, normalizing wire notifications and events
+ * official TypeScript SDK client, normalizing wire notifications and SessionEvents
  * into the DshEventStream.
+ * 
+ * Enforces pre-enqueue only fallback to prevent duplicate execution side-effects.
  */
 export class DshRuntimeClient {
   private activeHarness: DeepSeekHarness | null = null;
@@ -40,6 +42,8 @@ export class DshRuntimeClient {
    */
   public async executeTurn(options: RuntimeExecutionOptions): Promise<RuntimeExecutionResult> {
     const { prompt, config, events, sessionId, signal } = options;
+
+    let isPromptEnqueuedOrActive = false;
 
     events.emitEvent({
       type: 'agent:status',
@@ -78,18 +82,24 @@ export class DshRuntimeClient {
       let accumulatedReasoning = '';
       const toolCalls: DshToolCall[] = [];
 
+      isPromptEnqueuedOrActive = true;
+
       const result: RunResult = await harness.run(prompt, {
         sessionId,
         onNotification: (notif: HarnessNotification) => {
-          // Normalize official SessionEvent notifications from runtime
+          // Normalize official SessionEvent envelope from JSON-RPC wire
           if (notif.method === 'session.event' || notif.method === 'session/event') {
             const ev = (notif.params?.event || notif.params) as any;
             const eventType = String(ev?.type || '');
+            const data = (ev?.data || ev) as any;
 
-            // 1. Streaming Assistant Chunks
-            if (eventType === 'assistant/chunk' || eventType === 'agent:thought' || eventType === 'reasoning') {
-              const delta = String(ev.delta || ev.content || '');
-              if (ev.isReasoning || eventType.includes('thought') || eventType.includes('reasoning')) {
+            // 1. Assistant streaming chunks (inspect data.chunk envelope)
+            if (eventType === 'assistant/chunk') {
+              const chunk = data.chunk || data;
+              const isReasoning = chunk.type === 'reasoning' || chunk.blockType === 'reasoning' || data.isReasoning;
+              const delta = String(chunk.delta || chunk.text || chunk.content || '');
+
+              if (isReasoning) {
                 accumulatedReasoning += delta;
                 events.emitEvent({
                   type: 'stream:reasoning',
@@ -108,68 +118,72 @@ export class DshRuntimeClient {
                   fullContent: accumulatedContent,
                 });
               }
-            } else if (eventType === 'assistant/message' || eventType === 'agent:message') {
-              const text = String(ev.content || ev.text || '');
+            } else if (eventType === 'assistant/message') {
+              const text = String(data.content || data.text || '');
               if (text && !accumulatedContent.includes(text)) {
                 accumulatedContent += text;
               }
             }
 
-            // 2. Official Tool Call Events
-            if (eventType === 'tool/call' || eventType === 'tool.call') {
+            // 2. Official Tool Call Events (inspect data envelope)
+            if (eventType === 'tool/call') {
               const call: DshToolCall = {
-                id: ev.id || `call_${Date.now()}`,
-                name: ev.name || ev.tool || 'unknown_tool',
-                args: ev.args || {},
+                id: data.id || ev.id || `call_${Date.now()}`,
+                name: data.name || data.tool || ev.name || 'unknown_tool',
+                args: data.args || ev.args || {},
                 status: 'running',
                 riskLevel: 'medium',
-                startedAt: Date.now(),
+                startedAt: ev.time || Date.now(),
               };
               toolCalls.push(call);
               events.emitEvent({
                 type: 'tool:requested',
                 toolCall: call,
               });
-            } else if (eventType === 'tool/result' || eventType === 'tool.result') {
-              const callId = ev.id || ev.callId || 'unknown';
+            } else if (eventType === 'tool/result') {
+              const callId = data.id || data.callId || ev.id || 'unknown';
               const target = toolCalls.find(c => c.id === callId);
-              const toolStatus = ev.error ? 'failed' : 'success';
+              const toolStatus = (data.error || ev.error) ? 'failed' : 'success';
+              const outputText = typeof data.result === 'string'
+                ? data.result
+                : JSON.stringify(data.result || data.output || ev.result || {});
+
               if (target) {
                 target.status = toolStatus;
-                target.output = typeof ev.result === 'string' ? ev.result : JSON.stringify(ev.result || {});
-                target.completedAt = Date.now();
+                target.output = outputText;
+                target.completedAt = ev.time || Date.now();
               }
               events.emitEvent({
                 type: 'tool:output',
                 toolCallId: callId,
-                output: typeof ev.result === 'string' ? ev.result : JSON.stringify(ev.result || {}),
+                output: outputText,
               });
               events.emitEvent({
                 type: 'tool:finished',
                 toolCallId: callId,
                 status: toolStatus,
-                output: typeof ev.result === 'string' ? ev.result : JSON.stringify(ev.result || {}),
-                error: ev.error ? String(ev.error) : undefined,
+                output: outputText,
+                error: (data.error || ev.error) ? String(data.error || ev.error) : undefined,
               });
             }
 
-            // 3. Official Approval Events
-            if (eventType === 'approval/asked' || eventType === 'approval.asked') {
+            // 3. Official Approval Events (inspect data envelope)
+            if (eventType === 'approval/asked') {
               events.emitEvent({
                 type: 'tool:approval_needed',
                 approval: {
-                  id: ev.id || `appr_${Date.now()}`,
+                  id: data.id || ev.id || `appr_${Date.now()}`,
                   toolCall: {
-                    id: ev.toolCallId || ev.id,
-                    name: ev.tool || 'unknown',
-                    args: ev.args || {},
+                    id: data.toolCallId || data.id || ev.id,
+                    name: data.tool || data.name || 'unknown',
+                    args: data.args || {},
                     status: 'pending_approval',
                     riskLevel: 'high',
-                    startedAt: Date.now(),
+                    startedAt: ev.time || Date.now(),
                   },
                   riskLevel: 'high',
-                  promptMessage: ev.message || `Approval required for tool ${ev.tool}`,
-                  timestamp: Date.now(),
+                  promptMessage: data.message || `Approval required for tool ${data.tool || data.name}`,
+                  timestamp: ev.time || Date.now(),
                 },
               });
             }
@@ -192,13 +206,25 @@ export class DshRuntimeClient {
         executionMode: 'sdk_jsonrpc',
       };
     } catch (sdkErr: any) {
-      // Log explicit fallback so caller is aware of execution mode
+      // PRE-ENQUEUE ONLY FALLBACK: If prompt was already enqueued or active, do NOT replay
+      if (isPromptEnqueuedOrActive) {
+        const replayHazardError = new Error(
+          `SDK JSON-RPC transport failed during active turn execution (${sdkErr.message}). ` +
+          `Automatic fallback aborted to prevent duplicate mutation side-effects.`
+        );
+        events.emitEvent({
+          type: 'error',
+          message: replayHazardError.message,
+        });
+        throw replayHazardError;
+      }
+
+      // Safe pre-enqueue fallback (e.g. SDK handshake/boot failure)
       events.emitEvent({
         type: 'error',
-        message: `SDK stdio JSON-RPC unavailable (${sdkErr.message}), switching to headless profile execution.`,
+        message: `SDK stdio JSON-RPC handshake failed (${sdkErr.message}), executing pre-enqueue headless fallback.`,
       });
 
-      // 2. Fallback execution path: headless profile subprocess runner
       return this.executeHeadlessFallback(options);
     } finally {
       if (this.activeHarness) {
@@ -220,7 +246,6 @@ export class DshRuntimeClient {
 
     return new Promise<RuntimeExecutionResult>((resolve, reject) => {
       let accumulatedContent = '';
-      let accumulatedReasoning = '';
 
       const child = spawn('npx', ['-y', `@deepseek-ai/dsh@${config.runtimeVersion || '0.1.0-rc.6'}`, '--profile', 'headless', prompt], {
         cwd: config.workspacePath || process.cwd(),
@@ -258,13 +283,16 @@ export class DshRuntimeClient {
         reject(err);
       });
 
-      child.on('close', (code) => {
+      child.on('close', (code, signal) => {
         this.fallbackProcess = null;
-        if (code !== 0 && code !== null) {
-          const errorMsg = `Official DSH headless process exited with failure code ${code}`;
+
+        // Check both non-zero exit code and signal termination
+        if (code !== 0 || signal !== null) {
+          const reason = signal ? `terminated by signal ${signal}` : `exited with code ${code}`;
+          const errorMsg = `Official DSH headless process failed: ${reason}`;
           events.emitEvent({
             type: 'agent:status',
-            status: 'error',
+            status: signal ? 'interrupted' : 'error',
             payload: { error: errorMsg },
           });
           reject(new Error(errorMsg));
@@ -278,7 +306,6 @@ export class DshRuntimeClient {
 
         resolve({
           content: accumulatedContent.trim(),
-          reasoning: accumulatedReasoning.trim() || undefined,
           executionMode: 'headless_cli',
         });
       });
