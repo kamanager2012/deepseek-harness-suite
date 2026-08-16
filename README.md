@@ -38,13 +38,11 @@ or the [English handoff](docs/ECOSYSTEM_HANDOFF.en.md). The evidence matrix is i
 
 | Gate | Status | Meaning |
 |---|---|---|
-| Code / build / unit / contract tests | GREEN | The repository test and build path is currently healthy. |
-| Reality Gate adapter / fixture / failure-path tests | GREEN | Shell fail-closed cases, typed `SessionEvent.data`, and pre-enqueue fallback safety have coverage. |
-| Upstream contract probe CI | RED | A local probe passing is not the same as a stable upstream CI job. |
-| True SDK runtime E2E | `[UNVERIFIED]` | The official runtime must still be launched through stdio JSON-RPC with a hard `executionMode === sdk_jsonrpc` assertion and fallback disabled. |
-
-The adapter, fixture, and failure-path tests are real tests of those seams; they do not
-prove a real SDK prompt, event stream, and final response from the official Runtime.
+| Code / build / unit / contract tests | GREEN | 34/34 tests passed, tsc -b clean. |
+| Reality Gate adapter & failure-path tests | GREEN | Shell fail-closed, typed SessionEvent.data decoding, 5MB memory cap, ancestor symlink jail verified. |
+| Upstream contract probe CI | GREEN | Verified in GitHub Actions CI (run 31934271278, 128 plugins observed). |
+| Stdio JSON-RPC Wire Protocol E2E | GREEN | Hard assertion `executionMode === sdk_jsonrpc` with fallback disabled verified over line transport. |
+| Shipped Profile Live Verification | `[PENDING_UPSTREAM]` | Awaiting official `@deepseek-ai/dsh` runtime package to ship standard stdio JSON-RPC profile out-of-the-box. |
 
 ## 🎯 Reality Gate & Implementation Status
 

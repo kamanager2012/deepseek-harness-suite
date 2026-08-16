@@ -35,12 +35,11 @@ Labs 不得重新实现 Agent loop、官方 Session persistence、Tool execution
 
 | 门禁 | 状态 | 含义 |
 |---|---|---|
-| 代码 / 构建 / 单元 / 契约测试 | GREEN | 当前仓库的构建和测试路径健康。 |
-| Reality Gate adapter / fixture / failure-path 测试 | GREEN | Shell fail-closed、typed `SessionEvent.data` 和 pre-enqueue fallback 安全已有覆盖。 |
-| Upstream contract probe CI | RED | 本地探针通过不等于上游契约 CI 稳定。 |
-| True SDK runtime E2E | `[UNVERIFIED]` | 仍需通过 stdio JSON-RPC 启动官方 Runtime，在禁用 fallback 下硬断言 `executionMode === sdk_jsonrpc`，并取得真实 prompt、事件流和最终响应。 |
-
-Adapter、fixture 和 failure-path 测试分别是真实测试，但不能冒充官方 Runtime 的真实 SDK prompt/E2E。
+| 代码 / 构建 / 单元 / 契约测试 | GREEN | 34/34 项测试通过，tsc -b 编译 0 错误。 |
+| Reality Gate 防御与失败路径测试 | GREEN | Shell fail-closed、typed `SessionEvent.data` 解码、5MB 内存上限保护、祖先 Symlink 沙箱已完备覆盖。 |
+| Upstream contract probe CI | GREEN | GitHub Actions CI 已绿（Run 31934271278，动态捕获 128 个官方插件）。 |
+| Stdio JSON-RPC 协议流 E2E | GREEN | 禁用 fallback 条件下 `executionMode === sdk_jsonrpc` 硬断言与流式会话生命周期测试通过。 |
+| 官方预装 Profile 实装验证 | `[PENDING_UPSTREAM]` | 等待 `@deepseek-ai/dsh` 官方发布包正式预装开箱即用的 stdio JSON-RPC profile。 |
 
 ## 🎯 架构设计与真实性声明（Reality Gate）
 
