@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "build": "pnpm --filter \"./packages/*\" --filter \"./apps/*\" build",
+    "typecheck": "tsc --build",
     "test": "pnpm --filter @dsh-community/dsh-bridge test && vitest run contracts/tests",
     "test:bridge": "pnpm --filter @dsh-community/dsh-bridge test",
     "test:contracts": "vitest run contracts/tests",
