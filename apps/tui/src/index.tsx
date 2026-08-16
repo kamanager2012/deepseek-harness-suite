@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 import React from 'react';
 import { render } from 'ink';
-import { DshAgentController } from '@dsh-community/dsh-bridge';
+import { DshAgentController, DshSharedSessionStore } from '@dsh-community/dsh-bridge';
 import { App } from './App.js';
 
 function parseArgs() {
   const args = process.argv.slice(2);
   let model = process.env.DEEPSEEK_MODEL || 'deepseek-reasoner';
   let workspacePath = process.cwd();
+  let resumeSession: string | undefined;
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--help' || args[i] === '-h') {
@@ -20,6 +21,7 @@ Usage:
 Options:
   --model <model>       Model to use (default: deepseek-reasoner or $DEEPSEEK_MODEL)
   --dir <path>          Workspace directory (default: current working directory)
+  -r, --resume <id>     Resume previous session by ID, or pass 'last' for latest session
   -h, --help            Show this help message
   -v, --version         Show version information
 
@@ -47,10 +49,13 @@ In-session Commands:
     } else if (args[i] === '--dir' && args[i + 1]) {
       workspacePath = args[i + 1];
       i++;
+    } else if ((args[i] === '--resume' || args[i] === '-r') && args[i + 1]) {
+      resumeSession = args[i + 1];
+      i++;
     }
   }
 
-  return { model, workspacePath };
+  return { model, workspacePath, resumeSession };
 }
 
 function restoreTerminal() {
@@ -59,7 +64,7 @@ function restoreTerminal() {
 }
 
 async function main() {
-  const { model, workspacePath } = parseArgs();
+  const { model, workspacePath, resumeSession } = parseArgs();
 
   const controller = new DshAgentController({
     config: {
@@ -69,6 +74,20 @@ async function main() {
       workspacePath,
     },
   });
+
+  if (resumeSession) {
+    if (resumeSession === 'last') {
+      const store = new DshSharedSessionStore();
+      const list = store.listSessions();
+      if (list.length > 0) {
+        controller.resumeSessionById(list[0].id);
+      } else {
+        controller.addSystemMessage('No previous sessions found to resume.');
+      }
+    } else {
+      controller.resumeSessionById(resumeSession);
+    }
+  }
 
   const cleanup = () => {
     controller.interrupt();

@@ -1,4 +1,5 @@
 import type { RiskLevel } from '../types/index.js';
+import { DshIgnoreMatcher } from './dsh-ignore.js';
 
 export interface ToolRiskEvaluation {
   riskLevel: RiskLevel;
@@ -110,6 +111,19 @@ export class DshRiskEvaluator {
     }
 
     // 3. Auto-Safe policy (Default):
+    // Check if target file is a protected/ignored or sensitive file (.env, keys, etc.)
+    const targetFile = String(args.path || args.targetFile || args.filePath || args.file_path || args.TargetFile || '');
+    if (targetFile) {
+      const matcher = new DshIgnoreMatcher();
+      if (matcher.isIgnored(targetFile)) {
+        return {
+          riskLevel: 'critical',
+          requiresApproval: true,
+          reason: `Protected path detected in .dshignore/sensitive list: "${targetFile}"`,
+        };
+      }
+    }
+
     // Check if command contains critical destructive actions
     const commandStr = String(args.command || args.cmd || args.script || args.CommandLine || '');
     if (commandStr) {

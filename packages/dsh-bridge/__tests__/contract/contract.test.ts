@@ -13,6 +13,8 @@ import { DshPluginCatalogClient } from '../../src/marketplace/plugin-catalog.js'
 import { DshProviderManager } from '../../src/providers/provider-presets.js';
 import { DshCheckpointEngine } from '../../src/checkpoint/checkpoint-engine.js';
 import { DshTranscriptExporter } from '../../src/export/transcript-exporter.js';
+import { DshIgnoreMatcher } from '../../src/security/dsh-ignore.js';
+import { DshRiskEvaluator } from '../../src/security/risk-evaluator.js';
 import type { DshEvent } from '../../src/types/index.js';
 
 describe('DSH Bridge Contract Tests', () => {
@@ -410,6 +412,21 @@ describe('DSH Bridge Contract Tests', () => {
 
       const json = DshTranscriptExporter.toJson(session);
       expect(JSON.parse(json).id).toBe('sess_export_1');
+    });
+  });
+
+  describe('DSH Ignore & Sensitive Path Defense', () => {
+    it('detects sensitive files and elevates risk to critical', () => {
+      const matcher = new DshIgnoreMatcher('/tmp');
+      expect(matcher.isIgnored('.env')).toBe(true);
+      expect(matcher.isIgnored('server.key')).toBe(true);
+      expect(matcher.isIgnored('node_modules/express/index.js')).toBe(true);
+      expect(matcher.isIgnored('src/App.tsx')).toBe(false);
+
+      // Verify RiskEvaluator triggers critical approval for sensitive file
+      const evalResult = DshRiskEvaluator.evaluate('read_file', { path: '/workspace/.env' });
+      expect(evalResult.riskLevel).toBe('critical');
+      expect(evalResult.requiresApproval).toBe(true);
     });
   });
 });
