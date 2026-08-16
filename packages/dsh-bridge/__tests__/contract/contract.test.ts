@@ -133,13 +133,16 @@ describe('DSH Bridge Contract Tests', () => {
         config: { model: 'deepseek-chat' },
       });
 
+      const statuses: string[] = [];
+      controller.events.on('agent:status', (e) => statuses.push(e.status));
+
       expect(controller.getStatus()).toBe('idle');
       expect(controller.getSession().messages).toHaveLength(0);
 
       await controller.submitPrompt('Refactor the desktop client');
 
-      expect(controller.getStatus()).toBe('thinking');
-      expect(controller.getSession().messages).toHaveLength(1);
+      expect(statuses).toContain('thinking');
+      expect(controller.getSession().messages.length).toBeGreaterThanOrEqual(1);
       expect(controller.getSession().messages[0].content).toBe('Refactor the desktop client');
     });
 
@@ -226,9 +229,10 @@ describe('DSH Bridge Contract Tests', () => {
 
   describe('Shared Session Store & Atomic Writes', () => {
     it('saves and reads sessions atomically without leaving temporary artifacts', () => {
-      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-session-test-'));
+      const tempOfficial = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-off-test-'));
+      const tempSuite = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-suite-test-'));
       try {
-        const store = new DshSharedSessionStore(tempDir);
+        const store = new DshSharedSessionStore(tempOfficial, tempSuite);
         const session = {
           id: 'test_session_123',
           title: 'Atomic Test Session',
@@ -246,7 +250,7 @@ describe('DSH Bridge Contract Tests', () => {
         expect(readBack).not.toBeNull();
         expect(readBack?.title).toBe('Atomic Test Session');
 
-        const files = fs.readdirSync(tempDir);
+        const files = fs.readdirSync(tempSuite);
         expect(files).toContain('test_session_123.json');
         expect(files.filter(f => f.endsWith('.tmp'))).toHaveLength(0);
 
@@ -254,14 +258,16 @@ describe('DSH Bridge Contract Tests', () => {
         expect(list).toHaveLength(1);
         expect(list[0].id).toBe('test_session_123');
       } finally {
-        fs.rmSync(tempDir, { recursive: true, force: true });
+        fs.rmSync(tempOfficial, { recursive: true, force: true });
+        fs.rmSync(tempSuite, { recursive: true, force: true });
       }
     });
 
     it('handles controller system notifications and session resume helper', () => {
-      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-controller-test-'));
+      const tempOfficial = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-off2-test-'));
+      const tempSuite = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-suite2-test-'));
       try {
-        const store = new DshSharedSessionStore(tempDir);
+        const store = new DshSharedSessionStore(tempOfficial, tempSuite);
         const controller = new DshAgentController({ config: {} });
 
         controller.addSystemMessage('System initialized');
@@ -277,7 +283,8 @@ describe('DSH Bridge Contract Tests', () => {
         expect(resumed).toBe(true);
         expect(newController.getSession().id).toBe(savedId);
       } finally {
-        fs.rmSync(tempDir, { recursive: true, force: true });
+        fs.rmSync(tempOfficial, { recursive: true, force: true });
+        fs.rmSync(tempSuite, { recursive: true, force: true });
       }
     });
   });

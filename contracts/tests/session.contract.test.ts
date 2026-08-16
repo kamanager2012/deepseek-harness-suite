@@ -6,21 +6,26 @@ import { DshSharedSessionStore } from '../../packages/dsh-bridge/src/session/ses
 import type { DshSession } from '../../packages/dsh-bridge/src/types/index.js';
 
 describe('Shared Session Store Single-Source-of-Truth Contracts', () => {
-  let tempDir: string;
+  let tempOfficialDir: string;
+  let tempSuiteDir: string;
   let store: DshSharedSessionStore;
 
   beforeEach(() => {
-    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-session-test-'));
-    store = new DshSharedSessionStore(tempDir);
+    tempOfficialDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-official-sess-'));
+    tempSuiteDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-suite-sess-'));
+    store = new DshSharedSessionStore(tempOfficialDir, tempSuiteDir);
   });
 
   afterEach(() => {
-    if (fs.existsSync(tempDir)) {
-      fs.rmSync(tempDir, { recursive: true, force: true });
+    if (fs.existsSync(tempOfficialDir)) {
+      fs.rmSync(tempOfficialDir, { recursive: true, force: true });
+    }
+    if (fs.existsSync(tempSuiteDir)) {
+      fs.rmSync(tempSuiteDir, { recursive: true, force: true });
     }
   });
 
-  it('saves and lists sessions in ~/.dsh/sessions format', () => {
+  it('saves and lists Suite sessions in segregated store without writing to official dir', () => {
     const session: DshSession = {
       id: 'sess_12345',
       title: 'Refactor Auth Pipeline',
@@ -44,6 +49,10 @@ describe('Shared Session Store Single-Source-of-Truth Contracts', () => {
 
     store.saveSession(session);
 
+    // Verify official dir is NOT written
+    expect(fs.readdirSync(tempOfficialDir)).toHaveLength(0);
+
+    // Verify suite dir has the session
     const summaries = store.listSessions();
     expect(summaries).toHaveLength(1);
     expect(summaries[0].id).toBe('sess_12345');
@@ -55,22 +64,18 @@ describe('Shared Session Store Single-Source-of-Truth Contracts', () => {
     expect(loaded?.messages).toHaveLength(2);
   });
 
-  it('parses official JSONL session logs', () => {
-    const jsonlContent = [
-      JSON.stringify({ type: 'session:meta', title: 'Official DSH Log', model: 'deepseek-chat' }),
-      JSON.stringify({ role: 'user', content: 'Hello world' }),
-      JSON.stringify({ role: 'assistant', content: 'Hi there!' }),
-    ].join('\n');
+  it('discovers official JSONL sessions in read-only mode from official project layout', () => {
+    const projectDir = path.join(tempOfficialDir, 'proj-alpha', 'sess-001');
+    fs.mkdirSync(projectDir, { recursive: true });
+    fs.writeFileSync(path.join(projectDir, 'session.jsonl'), '{"event":"init"}\n', 'utf-8');
 
-    fs.writeFileSync(path.join(tempDir, 'sess_jsonl_999.jsonl'), jsonlContent, 'utf-8');
+    const official = store.listOfficialSessions();
+    expect(official).toHaveLength(1);
+    expect(official[0].id).toBe('sess-001');
+    expect(official[0].projectKey).toBe('proj-alpha');
 
-    const summaries = store.listSessions();
-    expect(summaries).toHaveLength(1);
-    expect(summaries[0].id).toBe('sess_jsonl_999');
-    expect(summaries[0].title).toBe('Official DSH Log');
-
-    const session = store.readSession('sess_jsonl_999');
-    expect(session?.messages).toHaveLength(2);
-    expect(session?.messages[0].content).toBe('Hello world');
+    const allSummaries = store.listSessions();
+    expect(allSummaries).toHaveLength(1);
+    expect(allSummaries[0].isOfficial).toBe(true);
   });
 });

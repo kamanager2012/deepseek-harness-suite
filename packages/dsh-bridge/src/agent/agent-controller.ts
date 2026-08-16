@@ -13,12 +13,14 @@ import { DshPluginCatalogClient, type PluginEntry } from '../marketplace/plugin-
 import { DshCheckpointEngine } from '../checkpoint/checkpoint-engine.js';
 import { DshProviderManager, type ProviderPreset } from '../providers/provider-presets.js';
 import { DshTranscriptExporter } from '../export/transcript-exporter.js';
+import { DshRuntimeClient } from '../runtime/runtime-client.js';
 
 export interface AgentControllerOptions {
   config: DshConfig;
   events?: DshEventStream;
   auditChain?: DshAuditChain;
   checkpoints?: DshCheckpointEngine;
+  runtimeClient?: DshRuntimeClient;
 }
 
 /**
@@ -31,6 +33,7 @@ export class DshAgentController {
   public readonly events: DshEventStream;
   public readonly auditChain: DshAuditChain;
   public readonly checkpoints: DshCheckpointEngine;
+  public readonly runtimeClient: DshRuntimeClient;
   private pluginClient = new DshPluginCatalogClient();
   private config: DshConfig;
   private currentSession: DshSession | null = null;
@@ -42,6 +45,7 @@ export class DshAgentController {
     this.events = options.events || new DshEventStream();
     this.auditChain = options.auditChain || new DshAuditChain();
     this.checkpoints = options.checkpoints || new DshCheckpointEngine();
+    this.runtimeClient = options.runtimeClient || new DshRuntimeClient();
 
     this.initSession();
     this.setupInternalListeners();
@@ -134,6 +138,40 @@ export class DshAgentController {
       type: 'session:updated',
       session,
     });
+
+    try {
+      const result = await this.runtimeClient.executeTurn({
+        prompt: promptText,
+        config: this.config,
+        events: this.events,
+      });
+
+      if (result.content || result.reasoning) {
+        const assistantMsg: DshMessage = {
+          id: `msg_a_${Date.now()}`,
+          role: 'assistant',
+          content: result.content,
+          reasoning: result.reasoning,
+          reasoningContent: result.reasoning,
+          timestamp: Date.now(),
+          status: 'complete',
+        };
+
+        session.messages.push(assistantMsg);
+        session.updatedAt = Date.now();
+
+        this.events.emitEvent({
+          type: 'session:updated',
+          session,
+        });
+      }
+    } catch (err: any) {
+      this.events.emitEvent({
+        type: 'agent:status',
+        status: 'error',
+        payload: { error: err.message },
+      });
+    }
   }
 
   /**
@@ -169,6 +207,7 @@ export class DshAgentController {
    * Interrupt / cancel active agent loop
    */
   public interrupt(): void {
+    this.runtimeClient.interrupt();
     this.events.emitEvent({
       type: 'agent:status',
       status: 'interrupted',

@@ -2,61 +2,72 @@
 
 > ⚡ **Official-Runtime Centric** Terminal & Desktop Distributions for DeepSeek Harness.
 
-[![Contract CI](https://github.com/dsh-community/dsh-suite/actions/workflows/contract-ci.yml/badge.svg)](https://github.com/dsh-community/dsh-suite/actions/workflows/contract-ci.yml)
+[![Contract CI](https://github.com/kamanager2012/deepseek-harness-suite/actions/workflows/ci.yml/badge.svg)](https://github.com/kamanager2012/deepseek-harness-suite/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![Upstream Target: 0.1.0-rc.6](https://img.shields.io/badge/Official%20DSH-0.1.0--rc.6%20verified-green.svg)](https://www.npmjs.com/package/@deepseek-ai/dsh)
 
 ---
 
-## 🌟 Architecture & Highlights
+## 🎯 Reality Gate & Implementation Status
 
-* **Official Source Ownership = 0**: Zero vendored copies of upstream monorepo packages. Official `@deepseek-ai/dsh` is treated strictly as an external runtime dependency.
-* **Shared Single Source of Truth (`~/.dsh/`)**: `~/.dsh/sessions/` is shared across TUI, Desktop, and official Web UI. Start in terminal, resume on desktop.
-* **Anti-Corruption Bridge (`@dsh-community/dsh-bridge`)**: Normalizes upstream events & streaming thoughts. Upstream version bumps require 0 UI code changes.
-* **DSH Version Manager**: Pin or switch between verified upstream versions (`0.1.0-rc.7`, `0.1.0-rc.8`) backed by automated Contract CI.
+| Capability / Module | Status | Architectural Invariant & Evidence |
+| :--- | :--- | :--- |
+| **Official Source Ownership** | `[REAL]` | `Ownership = 0`. Zero vendored code. Runtime launched via official `@deepseek-ai/dsh`. |
+| **Desktop Web Shell** | `[REAL]` | Controlled Electron shell hosting official localhost runtime with tray & clean process lifecycle. |
+| **Process Tree Governance** | `[REAL]` | POSIX process group detachment + Windows `taskkill /T /F` (0 orphan 3080 port leaks). |
+| **Dynamic Contract CI** | `[REAL]` | Live introspection probe against `dsh --dump-default-config` (128 plugins verified). |
+| **TUI Visual Components** | `[REAL]` | `DiffViewer` (syntax highlighing), `ReasoningBox` (collapsible thought stream), `ToolCard`. |
+| **Smart Risk Evaluator** | `[REAL]` | `DshRiskEvaluator` auto-approves safe read-only tools while strictly gating destructive commands. |
+| **Runtime Execution Transport** | `[REAL]` | `DshRuntimeClient` spawns official headless profile & streams live events into TUI. |
+| **Session Safety Gate** | `[READ-SAFE]` | Official `~/.dsh/sessions` is strictly **Read-Only** to prevent state corruption; Suite uses `~/.dsh/suite_sessions`. |
+| **Diagnostics & Health** | `[REAL]` | `/doctor` executes five-layer system checks (Node version, process isolation, API keys, token budget). |
+| **Tamper-Evident Audit** | `[REAL]` | `/audit` maintains cryptographic SHA-256 hash chains over every tool invocation & approval decision. |
+| **Rollback & Fork** | `[UI-LEVEL]` | `/message-rewind` and `/conversation-fork` (UI-level rewind until upstream exposes runtime checkpoint APIs). |
+
+---
+
+## 🌟 Architecture
+
+```text
+Official @deepseek-ai/dsh Runtime (@0.1.0-rc.6)
+   ↓
+dsh-bridge (Anti-Corruption & Execution Transport)
+   ↓
+TUI / Desktop Frontends
+   ↓
+Dynamic Live Contract CI
+```
 
 ---
 
 ## 📦 Packages & Distribution
 
-| Package | Role | Release Channel |
+| Package | Role | Status |
 | :--- | :--- | :--- |
-| [`@dsh-community/dsh-bridge`](./packages/dsh-bridge) | Anti-Corruption Layer & Process Supervisor | NPM Package |
-| [`@dsh-community/tui`](./apps/tui) | Claude Code level Terminal UX (Ink / Yoga) | NPM Binary (`dsh-tui`) |
-| [`@dsh-community/desktop`](./apps/desktop) | Zero-config Desktop Shell (Electron + Tray) | GitHub Releases (.dmg, .exe, .AppImage) |
+| [`@dsh-community/dsh-bridge`](./packages/dsh-bridge) | Anti-Corruption Layer, Runtime Client & Process Supervisor | Production Ready |
+| [`@dsh-community/tui`](./apps/tui) | Claude Code level Terminal UX (Ink / Yoga) | Active / Headless Connected |
+| [`@dsh-community/desktop`](./apps/desktop) | Zero-config Desktop Shell (Electron + Subprocess Manager) | Production Ready |
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Terminal Commands (TUI)
 
-### 1. Terminal UI (TUI)
-
-```bash
-# Run directly with npx
-npx @dsh-community/tui --model deepseek-reasoner
-
-# Or install globally
-npm install -g @dsh-community/tui
-dsh-tui
-```
-
-**Key Commands inside TUI:**
-- `/sessions` - List past sessions from `~/.dsh/sessions`
-- `/resume <id>` - Resume any previous session
-- `/save` - Save current session to shared store
-- `/rollback [index]` - Rewind conversation turns
+- `/doctor` - Run five-layer environment & health diagnostics
+- `/plugins [search]` - Discover verified plugins from the community registry
+- `/audit` - Inspect cryptographic SHA-256 tamper-evident execution log
+- `/provider [switch <id>]` - Inspect or switch model provider (DeepSeek, SiliconFlow, Ollama, vLLM, Ark)
+- `/undo` - Roll back the latest file modification checkpoint
+- `/export [markdown|json]` - Export structured session report with thought process
+- `/sessions` - Discover sessions (Official + Suite)
+- `/resume <id>` - Resume previous session
+- `/save` - Save current session atomically to `~/.dsh/suite_sessions/`
+- `/rollback [index]` - Message history rewind
 - `/fork` - Branch conversation from current turn
-- `Esc` - Interrupt current thought/generation
-
-### 2. Desktop Shell
-
-Download the installer for your OS from [GitHub Releases](../../releases):
-- **macOS**: `.dmg` (Apple Silicon & Intel)
-- **Windows**: `.exe` / `.zip`
-- **Linux**: `.AppImage` / `.deb`
+- `Esc` - Interrupt current thought / turn generation
 
 ---
 
-## 🛠️ Development & Contract Testing
+## 🛠️ Development & Dynamic Contract Testing
 
 ```bash
 # Install dependencies
@@ -68,7 +79,7 @@ pnpm run build
 # Run unit & contract tests
 pnpm run test
 
-# Run contract diff against upstream snapshot
+# Run LIVE dynamic probe against official @deepseek-ai/dsh
 npx tsx scripts/contract-checker.ts
 ```
 
