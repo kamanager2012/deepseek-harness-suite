@@ -54,8 +54,8 @@ export class DshRuntimeClient {
       // 1. Primary path: Official @deepseek-ai/dsh-sdk-client stdio JSON-RPC
       const harness = new DeepSeekHarness({
         launch: {
-          command: 'npx',
-          args: ['-y', `@deepseek-ai/dsh@${config.runtimeVersion || '0.1.0-rc.6'}`, '--profile', 'jsonrpc-agent'],
+          command: config.runtimeExecutable || 'npx',
+          args: config.runtimeExecutableArgs || ['-y', `@deepseek-ai/dsh@${config.runtimeVersion || '0.1.0-rc.6'}`, '--profile', 'jsonrpc-agent'],
           cwd: config.workspacePath || process.cwd(),
           env: {
             ...process.env,
@@ -206,6 +206,14 @@ export class DshRuntimeClient {
         executionMode: 'sdk_jsonrpc',
       };
     } catch (sdkErr: any) {
+      if (config.disableFallback) {
+        events.emitEvent({
+          type: 'error',
+          message: `SDK stdio JSON-RPC transport failed: ${sdkErr.message}`,
+        });
+        throw sdkErr;
+      }
+
       // PRE-ENQUEUE ONLY FALLBACK: If prompt was already enqueued or active, do NOT replay
       if (isPromptEnqueuedOrActive) {
         const replayHazardError = new Error(

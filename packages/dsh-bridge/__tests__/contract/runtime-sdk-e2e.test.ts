@@ -280,5 +280,185 @@ describe('Reality Gate & Runtime Transport Verification Suite', () => {
       }
     });
   });
+
+  describe('P0-B: True SDK Runtime stdio JSON-RPC E2E & Hard ExecutionMode Assertion', () => {
+    it('executes full prompt turn over stdio JSON-RPC without fallback and asserts executionMode === sdk_jsonrpc', async () => {
+      // 1. Create a standalone stdio JSON-RPC runtime script
+      const tempScriptDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-sdk-runtime-'));
+      const scriptPath = path.join(tempScriptDir, 'mock-jsonrpc-agent.mjs');
+
+      const runtimeCode = `
+import readline from 'node:readline';
+
+const rl = readline.createInterface({
+  input: process.stdin,
+  output: process.stdout,
+  terminal: false,
 });
+
+rl.on('line', (line) => {
+  if (!line.trim()) return;
+  try {
+    const req = JSON.parse(line);
+    if (req.method === 'initialize') {
+      const res = {
+        jsonrpc: '2.0',
+        id: req.id,
+        result: {
+          serverInfo: {
+            name: '@deepseek-ai/dsh-jsonrpc-agent',
+            version: '0.1.0-rc.6',
+          }
+        }
+      };
+      process.stdout.write(JSON.stringify(res) + '\\n');
+    } else if (req.method === 'session/prompt') {
+      const sessId = req.params?.sessionId || 'sess_default';
+      const res = {
+        jsonrpc: '2.0',
+        id: req.id,
+        result: {
+          messageId: 'msg_test_001',
+        }
+      };
+      process.stdout.write(JSON.stringify(res) + '\\n');
+
+      // Emit official protocol wire events
+      setTimeout(() => {
+        // 0. Enqueue receipt: agent/inbox/spliced
+        process.stdout.write(JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'session.event',
+          params: {
+            sessionId: sessId,
+            event: {
+              type: 'agent/inbox/spliced',
+              seq: 1,
+              time: Date.now(),
+              data: {
+                inserted: [{ id: 'msg_test_001' }]
+              }
+            }
+          }
+        }) + '\\n');
+
+        // 1. Reasoning chunk
+        process.stdout.write(JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'session.event',
+          params: {
+            sessionId: sessId,
+            event: {
+              type: 'assistant/chunk',
+              seq: 2,
+              time: Date.now(),
+              data: {
+                chunk: {
+                  type: 'block-start',
+                  blockType: 'reasoning',
+                  delta: 'Thinking via R1 reasoning channel',
+                }
+              }
+            }
+          }
+        }) + '\\n');
+
+        // 2. Content chunk
+        process.stdout.write(JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'session.event',
+          params: {
+            sessionId: sessId,
+            event: {
+              type: 'assistant/chunk',
+              seq: 3,
+              time: Date.now(),
+              data: {
+                chunk: {
+                  type: 'content',
+                  blockType: 'content',
+                  delta: 'SDK JSON-RPC Execution Verified',
+                }
+              }
+            }
+          }
+        }) + '\\n');
+
+        // 3. Assistant message summary with typed content block
+        process.stdout.write(JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'session.event',
+          params: {
+            sessionId: sessId,
+            event: {
+              type: 'assistant/message',
+              seq: 4,
+              time: Date.now(),
+              data: {
+                message: {
+                  content: [{ type: 'text', text: 'SDK JSON-RPC Execution Verified' }]
+                }
+              }
+            }
+          }
+        }) + '\\n');
+
+        // 4. Session status idle -> settles run()
+        process.stdout.write(JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'session.status',
+          params: {
+            sessionId: sessId,
+            status: 'idle',
+          }
+        }) + '\\n');
+      }, 50);
+    } else if (req.method === 'shutdown') {
+      process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: req.id, result: null }) + '\\n');
+      process.exit(0);
+    }
+  } catch (err) {
+    // Ignore
+  }
+});
+`;
+      fs.writeFileSync(scriptPath, runtimeCode, 'utf-8');
+
+      try {
+        const client = new DshRuntimeClient();
+        const events = new DshEventStream();
+        const collectedEvents: DshEvent[] = [];
+        events.onEvent((e) => collectedEvents.push(e));
+
+        const result = await client.executeTurn({
+          prompt: 'Run SDK prompt test',
+          sessionId: 'sess_sdk_e2e_100',
+          config: {
+            runtimeExecutable: process.execPath,
+            runtimeExecutableArgs: [scriptPath],
+            disableFallback: true,
+            model: 'deepseek-reasoner',
+          },
+          events,
+        });
+
+        // 1. Hard assertion on executionMode
+        expect(result.executionMode).toBe('sdk_jsonrpc');
+
+        // 2. Hard assertion on response content & reasoning
+        expect(result.content).toBe('SDK JSON-RPC Execution Verified');
+        expect(result.reasoning).toBe('Thinking via R1 reasoning channel');
+
+        // 3. Event Stream assertions
+        const reasoningEvent = collectedEvents.find((e) => e.type === 'stream:reasoning');
+        const contentEvent = collectedEvents.find((e) => e.type === 'stream:content');
+        expect(reasoningEvent).toBeDefined();
+        expect(contentEvent).toBeDefined();
+      } finally {
+        fs.rmSync(tempScriptDir, { recursive: true, force: true });
+      }
+    });
+  });
+});
+
 

@@ -101,6 +101,9 @@ export interface DshConfig {
   sandboxMode?: 'strict' | 'workspace_only' | 'unrestricted';
   approvalPolicy?: 'auto_safe' | 'strict' | 'unrestricted';
   runtimeVersion?: string;
+  runtimeExecutable?: string;
+  runtimeExecutableArgs?: string[];
+  disableFallback?: boolean;
   customPlugins?: string[];
 }
 
