@@ -14,6 +14,7 @@ export interface FileSnapshot {
   relativePath: string;
   existed: boolean;
   content?: string;
+  isOversized?: boolean;
 }
 
 export interface CheckpointRecord {
@@ -27,6 +28,9 @@ export interface CheckpointRecord {
 // Regex to catch NUL and ASCII/Unicode control characters (\x00-\x1f, \x7f)
 const CONTROL_CHAR_REGEX = /[\x00-\x1F\x7F]/;
 
+// Maximum file size to buffer in memory for instant rollback (5MB)
+const MAX_SNAPSHOT_FILE_SIZE_BYTES = 5 * 1024 * 1024;
+
 /**
  * Checkpoint & Safe File Undo Engine with Strict Workspace Boundary Jail
  * 
@@ -34,6 +38,7 @@ const CONTROL_CHAR_REGEX = /[\x00-\x1F\x7F]/;
  * - Rejects NUL and control characters in file paths.
  * - Resolves nearest existing ancestor to prevent symlink traversal escapes on non-existent targets.
  * - Restricts snapshot and /undo rollback operations strictly within workspaceRoot.
+ * - Caps single-file in-memory snapshot size at 5MB to avoid memory degradation.
  * - Truncates trailing checkpoints on sequential rollback to prevent invalid state chains.
  */
 export class DshCheckpointEngine {
@@ -148,8 +153,14 @@ export class DshCheckpointEngine {
 
       if (fs.existsSync(fullPath)) {
         try {
-          const content = fs.readFileSync(fullPath, 'utf-8');
-          snapshots.push({ filePath: fullPath, relativePath, existed: true, content });
+          const stat = fs.statSync(fullPath);
+          if (stat.size > MAX_SNAPSHOT_FILE_SIZE_BYTES) {
+            // Protect against buffering huge files into memory
+            snapshots.push({ filePath: fullPath, relativePath, existed: true, isOversized: true });
+          } else {
+            const content = fs.readFileSync(fullPath, 'utf-8');
+            snapshots.push({ filePath: fullPath, relativePath, existed: true, content });
+          }
         } catch {
           // Inaccessible or binary file
           snapshots.push({ filePath: fullPath, relativePath, existed: true });
