@@ -28,7 +28,7 @@ Bridge、SDK transport、安全、Checkpoint、审计和实验性 TUI / Desktop 
 执行核心是官方 [DeepSeek Harness Runtime](https://github.com/deepseek-ai/deepseek-harness)。
 Labs 不得重新实现 Agent loop、官方 Session persistence、Tool execution 或官方 core packages。
 
-当前接手基线见 [docs/ECOSYSTEM_HANDOFF.md](docs/ECOSYSTEM_HANDOFF.md)；
+当前接手基线见 [docs/ECOSYSTEM_HANDOFF.md](docs/ECOSYSTEM_HANDOFF.md)，Reality Gate 证据见 [docs/reality-gate.md](docs/reality-gate.md)；
 英文版见 [docs/ECOSYSTEM_HANDOFF.en.md](docs/ECOSYSTEM_HANDOFF.en.md)。
 
 ## 当前证据快照

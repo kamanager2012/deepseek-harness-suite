@@ -31,7 +31,8 @@ Labs must not reimplement its Agent loop, official Session persistence, tool
 execution, or core packages.
 
 For the current seam-by-seam handoff, read [docs/ECOSYSTEM_HANDOFF.md](docs/ECOSYSTEM_HANDOFF.md)
-or the [English handoff](docs/ECOSYSTEM_HANDOFF.en.md).
+or the [English handoff](docs/ECOSYSTEM_HANDOFF.en.md). The evidence matrix is in the
+[Reality Gate runbook](docs/reality-gate.en.md).
 
 ## Current evidence snapshot
 
