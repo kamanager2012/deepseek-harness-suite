@@ -111,14 +111,27 @@ dsh-community
 
 ---
 
-## 对普通用户的唯一入口
+## 真正的三个社区发行端（Three Community Endpoints）
 
 ```text
-DSH Community
-    │
-    ├── Desktop
-    └── Terminal / TUI
+                    Official DeepSeek Harness Runtime
+                                   │
+                  (共享 ~/.dsh 官方会话唯一真源)
+                                   │
+    ┌──────────────────────────────┼──────────────────────────────┐
+    │                              │                              │
+    ▼                              ▼                              ▼
+WSL / Linux 终端             Windows 桌面端                 macOS 桌面端
+(dsh-community CLI/TUI)    (DSH Community Setup.exe)      (DSH Community .dmg)
+  (开发者 / CLI / WSL2)       (下载 → 安装 → 配Key → 用)     (下载 → 安装 → 配Key → 用)
+    │                              │                              │
+    └──────────────────────────────┴──────────────────────────────┘
+                                   │
+                  统一正式发行版：dsh-community
 ```
+
+* **官方 Web**：上游自带界面，与三个社区端共享同一份 `~/.dsh` Session，不是我们发行的第四个产品；
+* **Linux AppImage**：可选/次要构建产物（WSL/Linux 终端是 Linux 开发者最核心的主力端）。
 
 正式 Release 永远来自：
 

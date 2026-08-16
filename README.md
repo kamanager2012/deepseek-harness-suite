@@ -64,17 +64,27 @@ or the [English handoff](docs/ECOSYSTEM_HANDOFF.en.md). The evidence matrix is i
 
 ---
 
-## 🌟 Architecture
+## 🌟 Product Architecture: One Harness. Three Community Endpoints.
 
 ```text
-Official @deepseek-ai/dsh Runtime (@0.1.0-rc.6)
-   ↓
-dsh-bridge (Anti-Corruption & Execution Transport)
-   ↓
-TUI / Desktop Frontends
-   ↓
-Dynamic Live Contract CI
+                         Official DeepSeek Harness Runtime
+                                       │
+                      (Shared ~/.dsh Single Session Truth)
+                                       │
+        ┌──────────────────────────────┼──────────────────────────────┐
+        │                              │                              │
+        ▼                              ▼                              ▼
+  WSL / Linux                   Windows Desktop                 macOS Desktop
+    Terminal                  (DSH Community Setup)          (DSH Community .dmg)
+(Developer / CLI)            (Download → Install → Run)      (Download → Install → Run)
+        │                              │                              │
+        └──────────────────────────────┴──────────────────────────────┘
+                                       │
+                      Canonical Distribution: dsh-community
 ```
+
+* **Official Web**: Upstream companion interface sharing the same `~/.dsh` session store.
+* **Linux AppImage**: Secondary / headless build artifact (WSL/Linux Terminal is the primary Linux user path).
 
 ---
 

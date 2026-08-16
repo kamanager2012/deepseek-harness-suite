@@ -60,6 +60,28 @@ Labs 不得重新实现 Agent loop、官方 Session persistence、Tool execution
 | **会话存储安全隔离** | `[READ-SAFE]` | 官方 `~/.dsh/sessions` 严格只读；Suite 自建状态安全隔离在 `~/.dsh/suite_sessions/`。 |
 | **回滚与分叉** | `[UI-LEVEL]` | 标明当前为消息历史回退（`/rollback`），待官方 runtime 开放状态回滚 API。 |
 
+## 🌟 产品架构：One Harness. Three Community Endpoints. (一套 Harness，三个社区端)
+
+```text
+                         Official DeepSeek Harness Runtime
+                                       │
+                      (共享 ~/.dsh 官方会话唯一真源)
+                                       │
+        ┌──────────────────────────────┼──────────────────────────────┐
+        │                              │                              │
+        ▼                              ▼                              ▼
+  WSL / Linux 终端              Windows 桌面端                  macOS 桌面端
+ (dsh-community CLI/TUI)     (DSH Community Setup.exe)       (DSH Community .dmg)
+   (开发者 / Agent重度用户)      (下载 → 安装 → 配Key → 使用)     (下载 → 安装 → 配Key → 使用)
+        │                              │                              │
+        └──────────────────────────────┴──────────────────────────────┘
+                                       │
+                      统一正式发行版：dsh-community
+```
+
+* **官方 Web**：上游自带的基础交互界面，与三大社区端共享相同的 `~/.dsh` 会话存储。
+* **Linux AppImage**：可选/次要构建产物（WSL/Linux 终端是 Linux 开发者最核心的主力端）。
+
 ---
 
 ## 🚀 极速上手
