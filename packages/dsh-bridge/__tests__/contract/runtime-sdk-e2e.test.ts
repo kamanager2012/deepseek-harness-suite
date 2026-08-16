@@ -254,7 +254,24 @@ describe('Reality Gate & Runtime Transport Verification Suite', () => {
         expect(officialSummary?.isOfficial).toBe(true);
         expect(suiteSummary?.isOfficial).toBe(false);
 
-        // 4. Verify official sessions directory remains strictly untouched
+        // 4. Read official session directly and parse transcript messages
+        fs.appendFileSync(
+          path.join(sessDir, 'session.jsonl'),
+          JSON.stringify({ type: 'user/message', data: { content: 'Implement quicksort' } }) + '\n' +
+          JSON.stringify({ type: 'assistant/chunk', data: { chunk: { blockType: 'reasoning', delta: 'Thinking about partition' } } }) + '\n' +
+          JSON.stringify({ type: 'assistant/chunk', data: { chunk: { blockType: 'content', delta: 'Here is the code' } } }) + '\n'
+        );
+
+        const loadedOfficial = store.readSession('sess_web_123');
+        expect(loadedOfficial).not.toBeNull();
+        expect(loadedOfficial?.messages.length).toBe(2);
+        expect(loadedOfficial?.messages[0].role).toBe('user');
+        expect(loadedOfficial?.messages[0].content).toBe('Implement quicksort');
+        expect(loadedOfficial?.messages[1].role).toBe('assistant');
+        expect(loadedOfficial?.messages[1].content).toBe('Here is the code');
+        expect(loadedOfficial?.messages[1].reasoning).toBe('Thinking about partition');
+
+        // 5. Verify official sessions directory remains strictly untouched by saves
         const officialFiles = fs.readdirSync(sessDir);
         expect(officialFiles).toEqual(['session.jsonl']);
       } finally {

@@ -26,6 +26,7 @@ export interface DshSessionSummary {
  * Safety Guarantee (P0):
  * 1. Official ~/.dsh/sessions is strictly READ-ONLY to avoid contaminating official runtime records.
  * 2. Suite-specific sessions are isolated in ~/.dsh/suite_sessions with atomic write protection.
+ * 3. Supports reading and importing official session JSONL transcripts into unified DshSession view.
  */
 export class DshSharedSessionStore {
   private officialSessionsDir: string;
@@ -144,17 +145,127 @@ export class DshSharedSessionStore {
   }
 
   /**
-   * Read full session by ID from suite sessions
+   * Parse an official JSONL transcript file into a clean DshSession view
+   */
+  public parseOfficialJsonlSession(ref: OfficialSessionRef): DshSession | null {
+    if (!fs.existsSync(ref.transcriptPath) || !ref.transcriptPath.endsWith('.jsonl')) {
+      return null;
+    }
+
+    try {
+      const rawContent = fs.readFileSync(ref.transcriptPath, 'utf-8');
+      const lines = rawContent.split('\n').filter((l) => l.trim().length > 0);
+      const messages: DshMessage[] = [];
+
+      let currentAssistantMessage: DshMessage | null = null;
+
+      for (let i = 0; i < lines.length; i++) {
+        try {
+          const entry = JSON.parse(lines[i]);
+          const eventType = entry.type || entry.event || '';
+          const data = entry.data || entry;
+
+          // 1. Direct message structures
+          if (entry.role === 'user' || eventType === 'user/message') {
+            if (currentAssistantMessage) {
+              messages.push(currentAssistantMessage);
+              currentAssistantMessage = null;
+            }
+            messages.push({
+              id: entry.id || `msg_user_${i}`,
+              role: 'user',
+              content: String(data.content || data.text || entry.content || ''),
+              timestamp: entry.time || entry.timestamp || Date.now(),
+              status: 'complete',
+            });
+          } else if (entry.role === 'assistant' || eventType === 'assistant/message') {
+            if (currentAssistantMessage) {
+              messages.push(currentAssistantMessage);
+              currentAssistantMessage = null;
+            }
+            messages.push({
+              id: entry.id || `msg_asst_${i}`,
+              role: 'assistant',
+              content: String(data.content || data.text || entry.content || ''),
+              reasoning: data.reasoning || entry.reasoning,
+              timestamp: entry.time || entry.timestamp || Date.now(),
+              status: 'complete',
+            });
+          } else if (eventType === 'assistant/chunk') {
+            // Streaming chunk aggregation
+            const chunk = data.chunk || data;
+            const delta = String(chunk.delta || chunk.text || chunk.content || '');
+            const isReasoning = chunk.type === 'reasoning' || chunk.blockType === 'reasoning';
+
+            if (!currentAssistantMessage) {
+              currentAssistantMessage = {
+                id: `msg_asst_stream_${i}`,
+                role: 'assistant',
+                content: '',
+                reasoning: '',
+                timestamp: entry.time || Date.now(),
+                status: 'complete',
+              };
+            }
+
+            if (isReasoning) {
+              currentAssistantMessage.reasoning = (currentAssistantMessage.reasoning || '') + delta;
+            } else {
+              currentAssistantMessage.content += delta;
+            }
+          }
+        } catch {
+          // Ignore individual malformed lines in JSONL
+        }
+      }
+
+      if (currentAssistantMessage) {
+        messages.push(currentAssistantMessage);
+      }
+
+      return {
+        id: ref.id,
+        title: `Official Session (${ref.projectKey})`,
+        createdAt: ref.mtimeMs,
+        updatedAt: ref.mtimeMs,
+        workspacePath: process.cwd(),
+        model: 'deepseek-reasoner',
+        messages,
+        metrics: {
+          promptTokens: 0,
+          completionTokens: 0,
+          totalTokens: 0,
+          tps: 0,
+          contextLimit: 128000,
+          contextUsagePercent: 0,
+        },
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Read full session by ID from suite sessions or official read-only storage
    */
   public readSession(sessionId: string): DshSession | null {
-    const filePath = path.join(this.suiteSessionsDir, `${sessionId}.json`);
-    if (fs.existsSync(filePath)) {
+    // 1. First check suite sessions
+    const suiteFilePath = path.join(this.suiteSessionsDir, `${sessionId}.json`);
+    if (fs.existsSync(suiteFilePath)) {
       try {
-        return JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+        return JSON.parse(fs.readFileSync(suiteFilePath, 'utf-8'));
       } catch {
-        return null;
+        // Fall through to official search
       }
     }
+
+    // 2. Search official sessions
+    const officialRefs = this.listOfficialSessions();
+    const matchingRef = officialRefs.find((r) => r.id === sessionId);
+    if (matchingRef) {
+      return this.parseOfficialJsonlSession(matchingRef);
+    }
+
     return null;
   }
 
