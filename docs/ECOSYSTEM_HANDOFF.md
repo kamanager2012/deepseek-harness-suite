@@ -100,19 +100,23 @@ DSH Community
 kamanager2012/dsh-community/releases/latest
 ```
 
-当前正式 Stable：
+当前版本层级：
 
 ```text
-v0.1.1
+Stable Release:   v0.1.1
+Preview Release:  v0.1.2-preview (修复核心 Web 启动与插件子进程管控)
+Codebase Trunk:   0.1.2
 ```
 
-目前正式 Release 已有：
+目前 Release 资产已覆盖：
 
 ```text
-Linux AppImage
+Linux AppImage (已发布)
+Windows NSIS / Portable zip (打包工作流已建立，正在修复 CI)
+macOS dmg (打包工作流已建立，正在修复 CI)
 ```
 
-Windows / macOS 后续也应该统一由 `dsh-community` 发布。
+Windows / macOS 统一由 `dsh-community` 官方发布。
 
 **绝不能因为 Suite 有更先进功能，就让 Windows 用户或者高级用户去下载 Suite。**
 
