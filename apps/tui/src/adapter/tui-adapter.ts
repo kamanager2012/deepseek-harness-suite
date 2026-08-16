@@ -35,7 +35,7 @@ export function useTuiBridge(controller: DshAgentController): UseTuiBridgeReturn
       switch (event.type) {
         case 'agent:status':
           setStatus(event.status);
-          if (event.status === 'idle') {
+          if (event.status === 'idle' || event.status === 'error' || event.status === 'interrupted') {
             setCurrentReasoning('');
             setCurrentContent('');
           }
@@ -89,6 +89,7 @@ export function useTuiBridge(controller: DshAgentController): UseTuiBridgeReturn
     controller.interrupt();
     setPendingApproval(null);
     setCurrentReasoning('');
+    setCurrentContent('');
   };
 
   const rollback = (turnIndex: number) => {

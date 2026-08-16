@@ -56,7 +56,12 @@ export class WindowManager {
     });
 
     this.mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-      shell.openExternal(url);
+      try {
+        const parsed = new URL(url);
+        if (['http:', 'https:'].includes(parsed.protocol)) {
+          shell.openExternal(url);
+        }
+      } catch {}
       return { action: 'deny' };
     });
 

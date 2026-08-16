@@ -12,6 +12,11 @@ build/
 release/
 *.tsbuildinfo
 
+# Test coverage & caches
+coverage/
+.vitest/
+.nyc_output/
+
 # OS & Editor
 .DS_Store
 Thumbs.db

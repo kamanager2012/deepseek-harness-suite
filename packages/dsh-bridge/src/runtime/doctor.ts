@@ -62,20 +62,27 @@ export class DshDoctor {
     // 3. Storage: ~/.dsh Directory Accessibility
     const dshHome = path.join(os.homedir(), '.dsh');
     const sessionsDir = path.join(dshHome, 'sessions');
+    const suiteSessionsDir = path.join(dshHome, 'suite_sessions');
     try {
       if (!fs.existsSync(sessionsDir)) {
         fs.mkdirSync(sessionsDir, { recursive: true });
       }
-      fs.accessSync(sessionsDir, fs.constants.R_OK | fs.constants.W_OK);
+      fs.accessSync(sessionsDir, fs.constants.R_OK);
+
+      if (!fs.existsSync(suiteSessionsDir)) {
+        fs.mkdirSync(suiteSessionsDir, { recursive: true });
+      }
+      fs.accessSync(suiteSessionsDir, fs.constants.R_OK | fs.constants.W_OK);
+
       checks.push({
-        name: 'Session Single-Source-of-Truth (~/.dsh/sessions)',
+        name: 'Session Single-Source-of-Truth (~/.dsh/sessions & ~/.dsh/suite_sessions)',
         category: 'storage',
         status: 'pass',
-        detail: `Read/Write permissions verified: ${sessionsDir}`,
+        detail: `Read/Write permissions verified: ${suiteSessionsDir}`,
       });
     } catch (err: any) {
       checks.push({
-        name: 'Session Single-Source-of-Truth (~/.dsh/sessions)',
+        name: 'Session Single-Source-of-Truth (~/.dsh/sessions & ~/.dsh/suite_sessions)',
         category: 'storage',
         status: 'fail',
         detail: `Cannot access session store: ${err.message}`,

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Box, Text } from 'ink';
+import { Box, Text, useApp } from 'ink';
 import TextInput from 'ink-text-input';
 
 interface InputBarProps {
@@ -15,12 +15,15 @@ export const InputBar: React.FC<InputBarProps> = ({
 }) => {
   const [value, setValue] = useState('');
 
+  const { exit } = useApp();
+
   const handleSubmit = (input: string) => {
     const trimmed = input.trim();
     if (!trimmed) return;
 
     if (trimmed === '/exit' || trimmed === '/quit') {
-      process.exit(0);
+      exit();
+      return;
     }
 
     onSubmit(trimmed);

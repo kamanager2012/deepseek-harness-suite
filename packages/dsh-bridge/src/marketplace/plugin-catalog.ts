@@ -35,7 +35,7 @@ const FALLBACK_CATALOG: PluginCatalog = {
       author: 'bowenliang123',
       repo: 'https://github.com/bowenliang123/dsh-context',
       category: 'ui',
-      versions: [{ version: '0.8.0', testedDsh: '0.1.0-rc.8' }],
+      versions: [{ version: '0.8.0', testedDsh: '0.1.0-rc.6' }],
     },
     {
       name: 'dsh-compressor',
@@ -43,7 +43,7 @@ const FALLBACK_CATALOG: PluginCatalog = {
       author: 'lifeodyssey',
       repo: 'https://github.com/lifeodyssey/dsh-compressor',
       category: 'tool',
-      versions: [{ version: '0.1.0', testedDsh: '0.1.0-rc.8' }],
+      versions: [{ version: '0.1.0', testedDsh: '0.1.0-rc.6' }],
     },
     {
       name: 'dsh-memory-vault',
@@ -51,7 +51,7 @@ const FALLBACK_CATALOG: PluginCatalog = {
       author: 'flymysql',
       repo: 'https://github.com/flymysql/dsh-memory',
       category: 'tool',
-      versions: [{ version: '0.1.5', testedDsh: '0.1.0-rc.8' }],
+      versions: [{ version: '0.1.5', testedDsh: '0.1.0-rc.6' }],
     },
     {
       name: 'dsh-working-activity',
@@ -59,7 +59,7 @@ const FALLBACK_CATALOG: PluginCatalog = {
       author: 'dsh-community',
       repo: 'https://github.com/kamanager2012/dsh-community',
       category: 'ui',
-      versions: [{ version: '0.2.4', testedDsh: '0.1.0-rc.8' }],
+      versions: [{ version: '0.2.4', testedDsh: '0.1.0-rc.6' }],
     },
   ],
 };
@@ -110,7 +110,7 @@ export class DshPluginCatalogClient {
     );
   }
 
-  public formatPluginList(plugins: PluginEntry[], currentDshVersion = '0.1.0-rc.8'): string {
+  public formatPluginList(plugins: PluginEntry[], currentDshVersion = '0.1.0-rc.6'): string {
     if (plugins.length === 0) {
       return 'No matching plugins found in the registry.';
     }

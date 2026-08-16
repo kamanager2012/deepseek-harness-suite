@@ -77,12 +77,23 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (sessions.length === 0) {
           sessionsList.innerHTML = '<li class="empty-sessions">No sessions found in ~/.dsh/sessions</li>';
         } else {
-          sessionsList.innerHTML = sessions.slice(0, 8).map(s => `
-            <li class="session-item">
-              <span class="session-title">${s.title}</span>
-              <span class="session-meta">${s.model} • ${s.messageCount} msgs</span>
-            </li>
-          `).join('');
+          sessionsList.innerHTML = '';
+          sessions.slice(0, 8).forEach(s => {
+            const li = document.createElement('li');
+            li.className = 'session-item';
+            
+            const titleSpan = document.createElement('span');
+            titleSpan.className = 'session-title';
+            titleSpan.textContent = s.title;
+            
+            const metaSpan = document.createElement('span');
+            metaSpan.className = 'session-meta';
+            metaSpan.textContent = `${s.model} • ${s.messageCount} msgs`;
+            
+            li.appendChild(titleSpan);
+            li.appendChild(metaSpan);
+            sessionsList.appendChild(li);
+          });
         }
       }
     } catch (err) {

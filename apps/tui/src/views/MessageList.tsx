@@ -16,15 +16,16 @@ export const MessageList: React.FC<MessageListProps> = ({
     <Box flexDirection="column" marginY={1}>
       {messages.map((msg, index) => {
         const isUser = msg.role === 'user';
+        const isSystem = msg.role === 'system';
         return (
           <Box key={msg.id || index} flexDirection="column" marginBottom={1}>
             <Box gap={1}>
-              <Text bold color={isUser ? 'cyan' : 'green'}>
-                {isUser ? '❯ User' : '◆ Assistant'}:
+              <Text bold color={isSystem ? 'yellow' : (isUser ? 'cyan' : 'green')}>
+                {isSystem ? '⚙ System' : (isUser ? '❯ User' : '◆ Assistant')}:
               </Text>
             </Box>
             <Box paddingLeft={2} marginTop={0} flexDirection="column">
-              <Text color="white">{msg.content}</Text>
+              <Text color={isSystem ? 'dim' : 'white'}>{msg.content}</Text>
               {msg.toolCalls?.map((tc) => (
                 <ToolCard key={tc.id} toolCall={tc} />
               ))}

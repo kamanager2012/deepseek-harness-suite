@@ -21,23 +21,21 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({ diffText, maxLines = 15 
     <Box flexDirection="column" marginY={1} paddingLeft={1} borderStyle="single" borderColor="gray">
       {displayLines.map((line, idx) => {
         let color: string = 'white';
-        let prefix = ' ';
+        let isBold = false;
 
         if (line.startsWith('+++') || line.startsWith('---')) {
-          color = 'bold';
+          isBold = true;
         } else if (line.startsWith('+')) {
           color = 'green';
-          prefix = '+';
         } else if (line.startsWith('-')) {
           color = 'red';
-          prefix = '-';
         } else if (line.startsWith('@@')) {
           color = 'cyan';
         }
 
         return (
           <Box key={idx} gap={1}>
-            <Text color={color}>
+            <Text color={color} bold={isBold}>
               {line}
             </Text>
           </Box>

@@ -12,3 +12,5 @@ export * from './runtime/doctor.js';
 export * from './providers/provider-presets.js';
 export * from './checkpoint/checkpoint-engine.js';
 export * from './export/transcript-exporter.js';
+export { DshRuntimeClient } from './runtime/runtime-client.js';
+export { DshIgnoreMatcher, DEFAULT_IGNORED_PATTERNS } from './security/dsh-ignore.js';

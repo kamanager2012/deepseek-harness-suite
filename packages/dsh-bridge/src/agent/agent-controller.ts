@@ -310,7 +310,7 @@ export class DshAgentController {
     const sessionStore = store || new DshSharedSessionStore();
     const session = this.getSession();
     sessionStore.saveSession(session);
-    this.addSystemMessage(`Session successfully saved to ~/.dsh/sessions/${session.id}.json`);
+    this.addSystemMessage(`Session successfully saved to ~/.dsh/suite_sessions/${session.id}.json`);
     return session.id;
   }
 
@@ -325,7 +325,7 @@ export class DshAgentController {
       this.addSystemMessage(`Resumed session "${sessionId}" (${loaded.title})`);
       return true;
     }
-    this.addSystemMessage(`Session "${sessionId}" not found in ~/.dsh/sessions`);
+    this.addSystemMessage(`Session "${sessionId}" not found in ~/.dsh/suite_sessions`);
     return false;
   }
 
@@ -354,7 +354,7 @@ export class DshAgentController {
    * Format plugin list for display in TUI
    */
   public formatPluginList(plugins: PluginEntry[]): string {
-    return this.pluginClient.formatPluginList(plugins, this.config.runtimeVersion || '0.1.0-rc.8');
+    return this.pluginClient.formatPluginList(plugins, this.config.runtimeVersion || '0.1.0-rc.6');
   }
 
   /**

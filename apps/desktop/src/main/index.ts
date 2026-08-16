@@ -8,6 +8,7 @@ let configStore: ConfigStore;
 let runtimeManager: DshSubprocessManager;
 let windowManager: WindowManager;
 let trayManager: TrayManager;
+let trayInterval: ReturnType<typeof setInterval>;
 
 async function bootstrap() {
   configStore = new ConfigStore();
@@ -41,10 +42,13 @@ async function bootstrap() {
   windowManager.showMainWindow();
 
   // Periodically refresh tray menu state
-  setInterval(() => {
+  trayInterval = setInterval(() => {
     trayManager.updateMenu();
   }, 3000);
 }
+
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) { app.quit(); } else { app.on('second-instance', () => windowManager?.showMainWindow()); }
 
 app.whenReady().then(bootstrap);
 
@@ -55,23 +59,24 @@ app.on('window-all-closed', () => {
   }
 });
 
+app.on('activate', () => {
+  windowManager?.showMainWindow();
+});
+
 const cleanup = async () => {
+  if (trayInterval) clearInterval(trayInterval);
   trayManager?.destroy();
   if (runtimeManager) {
     await runtimeManager.stop();
   }
 };
 
-process.on('SIGINT', async () => {
-  await cleanup();
-  app.exit(0);
+let isQuitting = false;
+app.on('before-quit', (event) => {
+  if (!isQuitting) {
+    event.preventDefault();
+    isQuitting = true;
+    cleanup().then(() => app.quit());
+  }
 });
 
-process.on('SIGTERM', async () => {
-  await cleanup();
-  app.exit(0);
-});
-
-app.on('before-quit', async () => {
-  await cleanup();
-});

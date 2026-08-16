@@ -4,7 +4,7 @@
 
 [English](./README.md) | **简体中文**
 
-[![Contract CI](https://github.com/kamanager2012/deepseek-harness-suite/actions/workflows/ci.yml/badge.svg)](https://github.com/kamanager2012/deepseek-harness-suite/actions/workflows/ci.yml)
+[![Contract CI](https://github.com/kamanager2012/deepseek-harness-suite/actions/workflows/contract-ci.yml/badge.svg)](https://github.com/kamanager2012/deepseek-harness-suite/actions/workflows/contract-ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![官方基准验证: 0.1.0-rc.6](https://img.shields.io/badge/Official%20DSH-0.1.0--rc.6%20verified-green.svg)](https://www.npmjs.com/package/@deepseek-ai/dsh)
 
