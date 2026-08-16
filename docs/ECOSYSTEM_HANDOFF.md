@@ -4,6 +4,19 @@
 
 **日期：2026-08-16**
 
+## 当前状态增量（以最新代码和 Actions 为准）
+
+本轮 Reality Gate 已继续收口：Shell compound/metacharacter 已进入 fail-closed 测试，
+SessionEvent mapper 已按官方 `event.data` envelope 解码，fallback 已加入
+`isPromptEnqueuedOrActive` 防重放；这些能力不再是上一轮的未修复 P0。
+
+```text
+Code / build / unit / contract tests       GREEN
+Reality Gate adapter / fixture / failures  GREEN
+Upstream contract probe CI                 RED
+True SDK runtime E2E                       UNVERIFIED
+```
+
 ---
 
 # 一、项目到底在做什么
@@ -489,9 +502,9 @@ requiresApproval = true
 
 ---
 
-# 十二、Risk Engine 仍有一个重要未闭合问题
+# 十二、Risk Engine 与 Shell Policy 当前状态
 
-Shell whitelist 目前还有类似：
+历史上曾有 Shell whitelist 类似：
 
 ```text
 startsWith("git status")
@@ -499,7 +512,7 @@ startsWith("echo ")
 startsWith("cat ")
 ```
 
-这种判断。
+这种判断；以下记录的是已经收口的历史风险。
 
 存在：
 
@@ -509,7 +522,7 @@ git status && dangerous_command
 echo xxx > file
 ```
 
-这类绕过风险。
+这类绕过风险已在 `a75a334` 通过 fail-closed 测试收口；当前仍不宣称完整跨平台 shell parser。
 
 所以必须继续升级：
 
@@ -693,7 +706,7 @@ turn/end
 
 这是进步。
 
-但是当前还有一个结构层问题。
+当前 mapper 已按官方 envelope 读取 `event.data`；真实 Runtime E2E 仍需单独证明。
 
 官方 SessionEvent 是：
 
@@ -713,13 +726,19 @@ assistant/chunk
 event.data.chunk
 ```
 
-而当前 Suite 部分 mapping 仍然在直接猜：
+当前映射已经收敛为：
 
 ```text
-event.content
-event.delta
-event.args
-event.id
+event.data.chunk
+event.data.args
+event.data.result
+```
+
+adapter/fixture 测试已覆盖这些路径，但手工构造 `SessionEvent` 或
+`projectRawUpstreamEvent()` 仍不能证明：
+
+```text
+real official runtime → stdio JSON-RPC → real SessionEvent → final response
 ```
 
 所以应该改成：
@@ -767,32 +786,9 @@ Headless 非零 exit code 也已经开始 reject。
 
 ---
 
-## 但还有 duplicate execution 风险
+## Replay safety 当前状态
 
-例如：
-
-```text
-SDK 收到 prompt
-↓
-Agent 已写文件
-↓
-transport 崩溃
-↓
-catch
-↓
-重新 headless 执行同一个 prompt
-```
-
-可能造成：
-
-```text
-double write
-double API call
-double migration
-double external side effect
-```
-
-正确设计：
+当前已经加入 `isPromptEnqueuedOrActive` 和生命周期阶段判断：
 
 ```text
 phase = NOT_STARTED
@@ -815,6 +811,8 @@ phase < PROMPT_ENQUEUED
 禁止自动 fallback
 FAIL LOUD
 ```
+
+这部分已有 failure-path 测试；真实 SDK transport E2E 仍是未验证项。
 
 ---
 
@@ -904,6 +902,9 @@ Probe CI stable
 ```
 
 不能混成一个结论。
+
+当前 Actions 应报告为：普通构建/测试绿，upstream contract probe job 红；不能因为本地
+probe 或 adapter tests 通过，就把整体 Suite workflow 写成全绿。
 
 ---
 
@@ -1229,15 +1230,15 @@ fully secure
 
 现在已经不是大规模重构阶段。
 
-剩下主要集中在 4 个 seam：
+剩下主要集中在 2 个 seam；Shell、typed event 和 pre-enqueue fallback 进入持续回归：
 
-## P0-A Shell Policy
+## 已完成回归：Shell Policy
 
-去掉字符串 prefix 白名单绕过。
+`&&`、`;`、`|`、重定向、替换、反引号和换行等 compound/metacharacter 已要求审批或 fail-closed。
 
 ---
 
-## P0-B True SDK Runtime E2E
+## P0-A True SDK Runtime E2E
 
 找到并使用官方正确 JSON-RPC runtime entrypoint。
 
@@ -1251,22 +1252,27 @@ executionMode = sdk_jsonrpc
 
 ---
 
-## P0-C Typed SessionEvent Adapter
+## 已完成回归：Typed SessionEvent Adapter
 
-严格解析：
+严格解析并进入 typed decoder：
 
 ```text
 event.type
 event.data
 ```
 
-不要猜字段。
+不再以 `content`、`delta`、`args` 等猜测字段替代 envelope；fixture 绿仍不等于真实 Runtime E2E。
 
 ---
 
-## P0-D Fallback Replay Safety
+## 已完成回归：Fallback Replay Safety
 
-只有 prompt 未 enqueue 时才能 fallback。
+只有 prompt 未 enqueue 时才能 fallback；`isPromptEnqueuedOrActive` 已阻止已接受 prompt 的自动重放。
+
+## P0-B Upstream probe CI
+
+修复 cold-start/contract probe workflow，使 upstream contract job 稳定变绿；把 probe、
+contract diff 和 runtime E2E 分开报告。
 
 ---
 
