@@ -1,41 +1,24 @@
 import type { RiskLevel } from '../types/index.js';
 import { DshIgnoreMatcher } from './dsh-ignore.js';
 
+export type ToolCapability =
+  | 'fs:read'
+  | 'fs:write'
+  | 'fs:delete'
+  | 'process:exec'
+  | 'process:kill'
+  | 'net:read'
+  | 'net:write'
+  | 'credential:read'
+  | 'git:write'
+  | 'system:mutate';
+
 export interface ToolRiskEvaluation {
   riskLevel: RiskLevel;
   requiresApproval: boolean;
-  reason?: string;
+  capabilities: ToolCapability[];
+  reason: string;
 }
-
-const SAFE_TOOL_PREFIXES = [
-  'read_',
-  'view_',
-  'list_',
-  'get_',
-  'search_',
-  'grep_',
-  'glob_',
-  'find_',
-  'fetch_',
-  'query_',
-  'check_',
-  'inspect_',
-];
-
-const SAFE_TOOL_NAMES = new Set([
-  'read_file',
-  'view_file',
-  'list_dir',
-  'grep_search',
-  'search_web',
-  'read_url_content',
-  'get_health',
-  'list_sessions',
-  'contract_checker',
-  'check_contracts',
-  'find_files',
-  'file_search',
-]);
 
 const CRITICAL_COMMAND_PATTERNS = [
   /\brm\s+(-[a-zA-Z]*r[a-zA-Z]*f|-[a-zA-Z]*f[a-zA-Z]*r|--recursive\s+--force|--force\s+--recursive)\b/i,
@@ -48,7 +31,21 @@ const CRITICAL_COMMAND_PATTERNS = [
   /\bgit\s+push\s+.*(--force|-f)\b/i,
   /\b(drop\s+database|drop\s+table)\b/i,
   /:\(\)\{\s*:\s*\|\s*:\s*&\s*\};\s*:/, // Fork bomb
+  /\bcurl\s+.*\|\s*(sh|bash)\b/i,       // Remote script execution pipe
+  /\bwget\s+.*\|\s*(sh|bash)\b/i,
 ];
+
+const KNOWN_SAFE_READ_TOOLS: Record<string, ToolCapability[]> = {
+  'read_file': ['fs:read'],
+  'view_file': ['fs:read'],
+  'list_dir': ['fs:read'],
+  'grep_search': ['fs:read'],
+  'search_web': ['net:read'],
+  'read_url_content': ['net:read'],
+  'get_health': ['fs:read'],
+  'list_sessions': ['fs:read'],
+  'contract_checker': ['process:exec'],
+};
 
 const SAFE_SHELL_COMMAND_PREFIXES = [
   'git status',
@@ -73,14 +70,95 @@ const SAFE_SHELL_COMMAND_PREFIXES = [
 ];
 
 /**
- * Intelligent Tool Risk & Approval Policy Evaluator
+ * Capability-Driven Tool Risk & Policy Evaluator
  * 
- * Auto-approves all non-destructive, read-only, and safe inspection operations,
- * reserving human-in-the-loop approval strictly for dangerous or state-altering actions.
+ * Replaces naive string-prefix matching with true capability semantics:
+ * - Maps tool operations to fine-grained capabilities (fs:read, fs:write, process:exec, credential:read).
+ * - Enforces credential and sensitive path protection (.dshignore).
+ * - Dissects command lines for destructive, irreversible, or privileged side-effects.
  */
 export class DshRiskEvaluator {
   /**
-   * Evaluate whether a tool call is safe to auto-execute or requires approval
+   * Infer capabilities from tool name and argument semantics
+   */
+  public static inferCapabilities(name: string, args: Record<string, unknown>): ToolCapability[] {
+    const normalized = (name || '').toLowerCase().trim();
+
+    // 1. Check known explicit tool map
+    if (KNOWN_SAFE_READ_TOOLS[normalized]) {
+      return [...KNOWN_SAFE_READ_TOOLS[normalized]];
+    }
+
+    const caps = new Set<ToolCapability>();
+
+    // 2. Destructive keyword check overrides any safe-sounding prefix
+    if (
+      normalized.includes('delete') ||
+      normalized.includes('remove') ||
+      normalized.includes('unlink') ||
+      normalized.includes('destroy') ||
+      normalized.includes('drop') ||
+      normalized.includes('erase') ||
+      normalized.includes('purge')
+    ) {
+      caps.add('fs:delete');
+      caps.add('system:mutate');
+    }
+
+    // 3. Credential exposure check
+    if (
+      normalized.includes('password') ||
+      normalized.includes('secret') ||
+      normalized.includes('credential') ||
+      normalized.includes('token') ||
+      normalized.includes('key')
+    ) {
+      caps.add('credential:read');
+    }
+
+    // 4. Process execution check
+    if (
+      normalized.includes('bash') ||
+      normalized.includes('exec') ||
+      normalized.includes('shell') ||
+      normalized.includes('terminal') ||
+      normalized.includes('command') ||
+      normalized.includes('spawn')
+    ) {
+      caps.add('process:exec');
+    }
+
+    // 5. Process termination
+    if (normalized.includes('kill') || normalized.includes('terminate') || normalized.includes('abort')) {
+      caps.add('process:kill');
+    }
+
+    // 6. File writing / replacing
+    if (
+      normalized.includes('write') ||
+      normalized.includes('replace') ||
+      normalized.includes('edit') ||
+      normalized.includes('modify') ||
+      normalized.includes('append')
+    ) {
+      caps.add('fs:write');
+    }
+
+    // 7. Network operations
+    if (normalized.includes('fetch') || normalized.includes('http') || normalized.includes('download') || normalized.includes('curl')) {
+      caps.add('net:read');
+    }
+
+    // Default to fs:read if no other capability is inferred
+    if (caps.size === 0) {
+      caps.add('fs:read');
+    }
+
+    return Array.from(caps);
+  }
+
+  /**
+   * Evaluate risk level and approval requirement based on capability semantics
    */
   public static evaluate(
     name: string,
@@ -88,30 +166,29 @@ export class DshRiskEvaluator {
     explicitRequiresApproval?: boolean,
     policy: 'auto_safe' | 'strict' | 'unrestricted' = 'auto_safe'
   ): ToolRiskEvaluation {
-    const normalizedName = (name || '').toLowerCase().trim();
+    const capabilities = this.inferCapabilities(name, args);
 
-    // 1. Unrestricted policy: allow everything without approval
+    // 1. Unrestricted policy override
     if (policy === 'unrestricted') {
-      const risk = this.calculateRisk(normalizedName, args);
       return {
-        riskLevel: risk,
+        riskLevel: 'low',
         requiresApproval: false,
+        capabilities,
         reason: 'Auto-approved by unrestricted policy',
       };
     }
 
-    // 2. Strict policy: ask approval for all tools
+    // 2. Strict policy override
     if (policy === 'strict') {
-      const risk = this.calculateRisk(normalizedName, args);
       return {
-        riskLevel: risk,
+        riskLevel: 'high',
         requiresApproval: true,
-        reason: 'Approval required by strict policy',
+        capabilities,
+        reason: 'Human approval required by strict policy',
       };
     }
 
-    // 3. Auto-Safe policy (Default):
-    // Check if target file is a protected/ignored or sensitive file (.env, keys, etc.)
+    // 3. Sensitive file and credential protection check
     const targetFile = String(args.path || args.targetFile || args.filePath || args.file_path || args.TargetFile || '');
     if (targetFile) {
       const matcher = new DshIgnoreMatcher();
@@ -119,12 +196,13 @@ export class DshRiskEvaluator {
         return {
           riskLevel: 'critical',
           requiresApproval: true,
-          reason: `Protected path detected in .dshignore/sensitive list: "${targetFile}"`,
+          capabilities: [...capabilities, 'credential:read'],
+          reason: `Protected sensitive path detected (.dshignore): "${targetFile}"`,
         };
       }
     }
 
-    // Check if command contains critical destructive actions
+    // 4. Process execution & command inspection
     const commandStr = String(args.command || args.cmd || args.script || args.CommandLine || '');
     if (commandStr) {
       for (const pattern of CRITICAL_COMMAND_PATTERNS) {
@@ -132,111 +210,66 @@ export class DshRiskEvaluator {
           return {
             riskLevel: 'critical',
             requiresApproval: true,
-            reason: `Critical risk detected: matching destructive command pattern (${pattern.source})`,
+            capabilities: [...capabilities, 'system:mutate'],
+            reason: `Destructive command pattern detected: ${pattern.source}`,
           };
         }
       }
 
-      // Check if command is an explicit safe read-only shell command
-      const trimmedCmd = commandStr.trim();
-      const isSafeCommand = SAFE_SHELL_COMMAND_PREFIXES.some(prefix => trimmedCmd.startsWith(prefix));
-      if (isSafeCommand) {
+      // Check if command matches known safe read-only CLI prefixes
+      const trimmed = commandStr.trim();
+      if (SAFE_SHELL_COMMAND_PREFIXES.some((prefix) => trimmed.startsWith(prefix))) {
         return {
           riskLevel: 'low',
           requiresApproval: false,
-          reason: `Safe read-only command detected: "${trimmedCmd.slice(0, 30)}"`,
+          capabilities: ['fs:read'],
+          reason: `Safe read-only inspection command: "${trimmed.slice(0, 35)}"`,
         };
       }
-    }
 
-    // Check if tool name is safe read-only
-    if (
-      SAFE_TOOL_NAMES.has(normalizedName) ||
-      SAFE_TOOL_PREFIXES.some((prefix) => normalizedName.startsWith(prefix))
-    ) {
-      return {
-        riskLevel: 'low',
-        requiresApproval: false,
-        reason: `Safe read-only inspection tool: ${normalizedName}`,
-      };
-    }
-
-    // High risk tools (arbitrary bash, terminal execution, process kill)
-    if (
-      normalizedName.includes('bash') ||
-      normalizedName.includes('exec') ||
-      normalizedName.includes('shell') ||
-      normalizedName.includes('terminal') ||
-      normalizedName.includes('kill') ||
-      normalizedName.includes('spawn')
-    ) {
+      // Arbitrary non-whitelisted command requires approval
       return {
         riskLevel: 'high',
         requiresApproval: true,
-        reason: `High risk tool execution: ${normalizedName}`,
+        capabilities: ['process:exec'],
+        reason: `Arbitrary shell command execution: "${trimmed.slice(0, 35)}"`,
       };
     }
 
-    // Mutating write tools
-    if (
-      normalizedName.includes('write') ||
-      normalizedName.includes('replace') ||
-      normalizedName.includes('edit') ||
-      normalizedName.includes('delete') ||
-      normalizedName.includes('modify') ||
-      normalizedName.includes('remove')
-    ) {
-      // If it's a file write/replace, medium risk. If upstream explicitly asked or strict, require approval.
-      const isDelete = normalizedName.includes('delete') || normalizedName.includes('remove');
+    // 5. Capability-driven risk classification
+    if (capabilities.includes('credential:read') || capabilities.includes('system:mutate')) {
       return {
-        riskLevel: isDelete ? 'high' : 'medium',
-        requiresApproval: isDelete || Boolean(explicitRequiresApproval),
-        reason: isDelete ? `Destructive deletion action: ${normalizedName}` : `File modification: ${normalizedName}`,
+        riskLevel: 'critical',
+        requiresApproval: true,
+        capabilities,
+        reason: `High-privilege capability requested: ${capabilities.join(', ')}`,
       };
     }
 
-    // Fallback: If upstream explicitly flagged approval, honor it; otherwise low-medium
-    const requiresApproval = explicitRequiresApproval ?? false;
+    if (capabilities.includes('fs:delete') || capabilities.includes('process:kill')) {
+      return {
+        riskLevel: 'high',
+        requiresApproval: true,
+        capabilities,
+        reason: `Destructive capability requested: ${capabilities.join(', ')}`,
+      };
+    }
+
+    if (capabilities.includes('fs:write') || capabilities.includes('git:write')) {
+      return {
+        riskLevel: 'medium',
+        requiresApproval: Boolean(explicitRequiresApproval),
+        capabilities,
+        reason: `State-modifying write capability: ${capabilities.join(', ')}`,
+      };
+    }
+
+    // Pure read-only tools
     return {
-      riskLevel: requiresApproval ? 'medium' : 'low',
-      requiresApproval,
-      reason: requiresApproval ? 'Upstream flagged approval requirement' : 'Standard tool execution',
+      riskLevel: 'low',
+      requiresApproval: Boolean(explicitRequiresApproval),
+      capabilities,
+      reason: `Safe inspection capability: ${capabilities.join(', ')}`,
     };
-  }
-
-  private static calculateRisk(name: string, args: Record<string, unknown>): RiskLevel {
-    const commandStr = String(args.command || args.cmd || args.script || args.CommandLine || '');
-    if (commandStr) {
-      for (const pattern of CRITICAL_COMMAND_PATTERNS) {
-        if (pattern.test(commandStr)) return 'critical';
-      }
-      if (SAFE_SHELL_COMMAND_PREFIXES.some(prefix => commandStr.trim().startsWith(prefix))) {
-        return 'low';
-      }
-      return 'high';
-    }
-
-    if (
-      SAFE_TOOL_NAMES.has(name) ||
-      SAFE_TOOL_PREFIXES.some((prefix) => name.startsWith(prefix))
-    ) {
-      return 'low';
-    }
-
-    if (
-      name.includes('bash') ||
-      name.includes('exec') ||
-      name.includes('shell') ||
-      name.includes('terminal') ||
-      name.includes('kill')
-    ) {
-      return 'high';
-    }
-
-    if (name.includes('delete') || name.includes('remove')) {
-      return 'high';
-    }
-
-    return 'medium';
   }
 }

@@ -79,25 +79,19 @@ describe('DSH Bridge Contract Tests', () => {
       }
     });
 
-    it('requires human approval for dangerous, destructive, or mutating shell commands', () => {
-      const stream = new DshEventStream();
-      const events: DshEvent[] = [];
-      stream.onEvent((e) => events.push(e));
+    it('accurately classifies capability semantics instead of relying on string prefix', () => {
+      // Safe-sounding name with destructive and credential keywords
+      const eval1 = DshRiskEvaluator.evaluate('get_password_and_delete_account', {});
+      expect(eval1.capabilities).toContain('credential:read');
+      expect(eval1.capabilities).toContain('fs:delete');
+      expect(eval1.riskLevel).toBe('critical');
+      expect(eval1.requiresApproval).toBe(true);
 
-      stream.projectRawUpstreamEvent({
-        type: 'tool.call',
-        id: 'call_danger_1',
-        name: 'bash_execute',
-        args: { command: 'rm -rf /tmp/test' },
-      });
-
-      expect(events).toHaveLength(2);
-      expect(events[0].type).toBe('tool:requested');
-      expect(events[1].type).toBe('tool:approval_needed');
-      if (events[1].type === 'tool:approval_needed') {
-        expect(events[1].approval.riskLevel).toBe('critical');
-        expect(events[1].approval.toolCall.name).toBe('bash_execute');
-      }
+      // Safe read tool
+      const eval2 = DshRiskEvaluator.evaluate('read_file', { path: '/project/src/index.ts' });
+      expect(eval2.capabilities).toContain('fs:read');
+      expect(eval2.riskLevel).toBe('low');
+      expect(eval2.requiresApproval).toBe(false);
     });
 
     it('normalizes TPS and token usage metrics', () => {
@@ -390,6 +384,18 @@ describe('DSH Bridge Contract Tests', () => {
         const undoRes = engine.undo();
         expect(undoRes.success).toBe(true);
         expect(fs.readFileSync(testFile, 'utf-8')).toBe('const initial = 1;');
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it('enforces strict workspace path jail and rejects escapes', () => {
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-cp-jail-'));
+      try {
+        const engine = new DshCheckpointEngine(tempDir);
+        expect(() => {
+          engine.snapshot(['../../etc/passwd'], 'Malicious escape');
+        }).toThrow(/Security Boundary Violation/);
       } finally {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
