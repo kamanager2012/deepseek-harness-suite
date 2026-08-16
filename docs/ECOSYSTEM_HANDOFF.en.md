@@ -17,6 +17,37 @@ Checkpoint, Undo, audit, and runtime probes. It is not a second user distributio
 
 ## Current status
 
+### Current ecosystem phase
+
+```text
+Phase 2 — Edition → Community       ✅ completed
+Phase 3 — 3-OS Stable baseline      ✅ v0.1.2 published
+Phase 4 — Distribution Reality Gate 🔄 active
+  ├─ Plugin supply chain            ✅ main work complete (9/9 install + compose)
+  └─ Marketplace UX                 ✅ main work complete (digest + provenance)
+Phase 5 — Handbook drift CI         ⏳ not started
+```
+
+`v0.1.2` is the fixed three-platform Stable baseline. Current `dsh-community` `main`
+is a post-release reliability line: `918f004` improves Windows dependency staging and
+ready stamps, while `e487cf0` shows a loading window before first-launch extraction.
+Do not claim those fixes are in the published `v0.1.2` assets without a new Release.
+
+### Distribution Reality Gate
+
+The next evidence must come from the exact files downloaded from the `v0.1.2` Release,
+not from main-source builds or generic CI:
+
+```text
+Windows clean VM → EXE install → first launch → key → new/resume → plugin → restart
+macOS clean host → dmg install → first launch → key → new/resume → plugin → restart
+Linux clean host → AppImage → first launch → key → new/resume → plugin → restart
+```
+
+Uninstall/reinstall, upgrade, bad network, missing credentials, interrupted Runtime
+extraction, and Web ↔ Desktop ↔ TUI Session sharing remain exact-artifact acceptance
+scenarios and must be labelled `[UNVERIFIED]` until actually run.
+
 ### Current Community release snapshot
 
 ```text

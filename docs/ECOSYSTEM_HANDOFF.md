@@ -9,10 +9,13 @@
 ```text
 Phase 2 — Edition → Community 合流     ✅ COMPLETED (3704e77)
 Phase 3 — 3-OS Release (v0.1.2)        ✅ COMPLETED (Linux AppImage / Win NSIS / macOS dmg)
-Phase 4 — 插件验证层 (Supply Chain)    ✅ COMPLETED (verify.mjs + compose-check.mjs 9/9 插件实测)
-Phase 6 — Marketplace UX               ✅ COMPLETED (digest + provenance 校验)
+Phase 4 — Distribution Reality Gate    🔄 ACTIVE (exact v0.1.2 artifact / clean-machine smoke)
+  ├─ Plugin Supply Chain                ✅ MAIN WORK COMPLETE (9/9 install + compose)
+  └─ Marketplace UX                     ✅ MAIN WORK COMPLETE (digest + provenance)
 Phase 1/5 — 知识库与全景治理          🔄 IN PROGRESS (Handbook / Ecosystem)
 ```
+
+`v0.1.2` 是已发布的三系统 Stable 基线；当前 `dsh-community` `main` 是发布后的可靠性修复线。`918f004`（Windows 完整依赖树暂存与 ready stamp）和 `e487cf0`（首次启动加载页）不能未经新 Release 说明就倒写为已包含在 `v0.1.2` 安装包中。
 
 ### Suite (Community Labs) 真实性门禁快照
 
@@ -138,6 +141,8 @@ Linux AppImage (v0.1.2 已发布)
 Windows NSIS (v0.1.2 已发布)
 macOS dmg (v0.1.2 已发布)
 ```
+
+发布基线与开发线必须分开：`v0.1.2` 只代表 tag 上的固定资产；`main` 的后续可靠性修复要等新的 Release 才能成为用户下载事实。
 
 Windows / macOS 统一由 `dsh-community` 官方发布。
 
@@ -1332,7 +1337,7 @@ contract diff 和 runtime E2E 分开报告。
 
 ---
 
-# 三十、下一阶段执行顺序
+# 三十、下一阶段执行顺序（已更新）
 
 建议严格按这个顺序：
 
@@ -1348,16 +1353,16 @@ Edition → Community 合流
 ↓
 
 Phase 3
-dsh-community Release 完整化
-
-Windows
-macOS
-Linux
+dsh-community 3-OS Stable 基线已发布
 
 ↓
 
 Phase 4
-Plugins Supply Chain
+Distribution Reality Gate
+
+exact Release artifact
+clean Windows / macOS / Linux
+first launch / Session / plugin / upgrade
 
 ↓
 
@@ -1366,8 +1371,8 @@ Handbook Drift CI
 
 ↓
 
-Phase 6
-Marketplace UX
+Phase 4 workstreams
+Plugin Supply Chain + Marketplace UX
 
 ↓
 
@@ -1377,38 +1382,28 @@ Labs 成熟功能分批晋升 Community
 
 ---
 
-# 三十一、当前最重要的产品工作其实是 Release
+# 三十一、当前最重要的产品工作是 Distribution Reality Gate
 
-因为现在战略和仓库已经基本理清，但用户仍然可能不知道下载什么。
+`v0.1.2` 已经完成构建和三系统发布门槛。现在要验证的是：一个没有参与开发的人，下载 Release 页面上的真实安装包后能否完成用户闭环。
 
-所以 `dsh-community` 必须尽快形成统一 Release：
-
-```text
-DSH-Community-Setup-x.x.x.exe
-
-DSH-Community-x.x.x-win-x64.zip
-
-DSH-Community-x.x.x.dmg
-
-dsh-community-x.x.x.AppImage
-```
-
-并且：
+必须直接测试 exact release artifact，而不是 main 源码或 CI artifact：
 
 ```text
-README
-Handbook
-Marketplace
-Suite
-Edition
-Plugins
+Windows clean VM → EXE 安装 → 首次启动 → 密钥 → new/resume → plugin → restart
+macOS clean host → dmg 安装 → 首次启动 → 密钥 → new/resume → plugin → restart
+Linux clean host → AppImage → 首次启动 → 密钥 → new/resume → plugin → restart
 ```
 
-所有“下载 Community”的链接最终都指向：
+还要覆盖：
 
-```text
-dsh-community/releases/latest
-```
+- 卸载 / 重装；
+- 升级；
+- 断网；
+- 缺少 API key；
+- Runtime 解压中断或半截失败；
+- Web ↔ Desktop ↔ TUI 是否共享同一 `~/.dsh` Session。
+
+在这些证据产生前，不能把“普通 CI 通过”或“main 已修复”写成 Stable 用户现实已验证。
 
 ---
 
