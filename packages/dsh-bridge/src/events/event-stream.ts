@@ -53,9 +53,32 @@ export class DshEventStream {
   public projectRawUpstreamEvent(rawEvent: Record<string, any>): void {
     if (!rawEvent || typeof rawEvent !== 'object') return;
 
-    const rawType = rawEvent.type || rawEvent.event;
+    const rawType = String(rawEvent.type || rawEvent.event || '');
+    const data = rawEvent.data || rawEvent;
 
     switch (rawType) {
+      // 1. Assistant Chunk & Reasoning
+      case 'assistant/chunk': {
+        const chunk = data.chunk || data;
+        const isReasoning = chunk.type === 'reasoning' || chunk.blockType === 'reasoning' || data.isReasoning;
+        const delta = String(chunk.delta || chunk.text || chunk.content || '');
+
+        if (isReasoning) {
+          this.emitEvent({
+            type: 'stream:reasoning',
+            delta,
+            fullContent: delta,
+          });
+        } else {
+          this.emitEvent({
+            type: 'stream:content',
+            delta,
+            fullContent: delta,
+          });
+        }
+        break;
+      }
+
       case 'agent.thought':
       case 'reasoning_content':
       case 'stream:thought': {
@@ -69,11 +92,12 @@ export class DshEventStream {
         break;
       }
 
+      case 'assistant/message':
       case 'agent.message':
       case 'content':
       case 'stream:content': {
-        const delta = rawEvent.delta || rawEvent.chunk || '';
-        const full = rawEvent.content || rawEvent.text || '';
+        const delta = data.delta || data.chunk || '';
+        const full = data.content || data.text || '';
         this.emitEvent({
           type: 'stream:content',
           delta,
@@ -99,25 +123,26 @@ export class DshEventStream {
         break;
       }
 
+      case 'tool/call':
       case 'tool.call':
       case 'tool.invoke': {
-        const name = rawEvent.name || rawEvent.tool || 'unknown_tool';
-        const args = rawEvent.args || rawEvent.arguments || {};
-        const explicitApproval = rawEvent.requiresApproval;
+        const name = data.name || data.tool || 'unknown_tool';
+        const args = data.args || data.arguments || {};
+        const explicitApproval = data.requiresApproval;
 
         // Auto-approve safe read-only operations; require approval for destructive or high-risk tasks
-        const evaluation = DshRiskEvaluator.evaluate(name, args, explicitApproval, (rawEvent.approvalPolicy || 'auto_safe'));
-        const riskLevel = rawEvent.riskLevel || evaluation.riskLevel;
+        const evaluation = DshRiskEvaluator.evaluate(name, args, explicitApproval, (data.approvalPolicy || 'auto_safe'));
+        const riskLevel = data.riskLevel || evaluation.riskLevel;
         const requiresApproval = evaluation.requiresApproval;
 
         const toolCall: DshToolCall = {
-          id: rawEvent.id || String(Date.now()),
+          id: data.id || rawEvent.id || String(Date.now()),
           name,
           args,
           status: requiresApproval ? 'pending_approval' : 'running',
           riskLevel,
-          diff: rawEvent.diff,
-          startedAt: Date.now(),
+          diff: data.diff,
+          startedAt: rawEvent.time || Date.now(),
         };
 
         this.emitEvent({
@@ -129,9 +154,9 @@ export class DshEventStream {
           const approval: DshApprovalRequest = {
             id: `appr_${toolCall.id}`,
             toolCall,
-            promptMessage: rawEvent.promptMessage || `Approve tool execution: ${toolCall.name}${evaluation.reason ? ` (${evaluation.reason})` : ''}`,
+            promptMessage: data.promptMessage || `Approve tool execution: ${toolCall.name}${evaluation.reason ? ` (${evaluation.reason})` : ''}`,
             riskLevel: toolCall.riskLevel,
-            timestamp: Date.now(),
+            timestamp: rawEvent.time || Date.now(),
           };
           this.emitEvent({
             type: 'tool:approval_needed',
@@ -141,16 +166,49 @@ export class DshEventStream {
         break;
       }
 
+      case 'tool/result':
       case 'tool.result':
       case 'tool.finish': {
-        const toolCallId = rawEvent.id || rawEvent.toolCallId;
-        const status = rawEvent.error ? 'failed' : 'success';
+        const toolCallId = data.id || data.toolCallId || rawEvent.id;
+        const status = (data.error || rawEvent.error) ? 'failed' : 'success';
+        const output = typeof data.result === 'string'
+          ? data.result
+          : (data.output || data.result || rawEvent.output || rawEvent.result);
+
+        this.emitEvent({
+          type: 'tool:output',
+          toolCallId,
+          output: typeof output === 'string' ? output : JSON.stringify(output || {}),
+        });
+
         this.emitEvent({
           type: 'tool:finished',
           toolCallId,
           status,
-          output: rawEvent.output || rawEvent.result,
-          error: rawEvent.error,
+          output: typeof output === 'string' ? output : JSON.stringify(output || {}),
+          error: data.error || rawEvent.error,
+        });
+        break;
+      }
+
+      case 'approval/asked': {
+        const approval: DshApprovalRequest = {
+          id: data.id || `appr_${Date.now()}`,
+          toolCall: {
+            id: data.toolCallId || data.id,
+            name: data.tool || data.name || 'unknown',
+            args: data.args || {},
+            status: 'pending_approval',
+            riskLevel: 'high',
+            startedAt: rawEvent.time || Date.now(),
+          },
+          riskLevel: 'high',
+          promptMessage: data.message || `Approval required for tool ${data.tool || data.name}`,
+          timestamp: rawEvent.time || Date.now(),
+        };
+        this.emitEvent({
+          type: 'tool:approval_needed',
+          approval,
         });
         break;
       }
@@ -185,7 +243,6 @@ export class DshEventStream {
       }
 
       default:
-        // Pass through raw event under a generic wrapper if needed
         break;
     }
   }
