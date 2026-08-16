@@ -104,6 +104,31 @@ export const App: React.FC<AppProps> = ({ controller }) => {
       return;
     }
 
+    if (text.startsWith('/provider')) {
+      const parts = text.split(' ');
+      if (parts[1] === 'switch' && parts[2]) {
+        const res = controller.switchProvider(parts[2], parts[3]);
+        controller.addSystemMessage(res.message);
+      } else {
+        controller.addSystemMessage(controller.listProviders());
+      }
+      return;
+    }
+
+    if (text.startsWith('/undo')) {
+      const res = controller.undoLastMutation();
+      controller.addSystemMessage(res.message);
+      return;
+    }
+
+    if (text.startsWith('/export')) {
+      const parts = text.split(' ');
+      const format = parts[1] === 'json' ? 'json' : 'markdown';
+      const output = controller.exportTranscript(format);
+      controller.addSystemMessage(`📄 Exported Session Transcript (${format.toUpperCase()}):\n\n${output.slice(0, 500)}...\n\n[Full transcript ready]`);
+      return;
+    }
+
     await submitPrompt(text);
   };
 

@@ -10,11 +10,15 @@ import { DshSharedSessionStore } from '../session/session-store.js';
 import { DshAuditChain } from '../security/audit-chain.js';
 import { DshDoctor, type DoctorReport } from '../runtime/doctor.js';
 import { DshPluginCatalogClient, type PluginEntry } from '../marketplace/plugin-catalog.js';
+import { DshCheckpointEngine } from '../checkpoint/checkpoint-engine.js';
+import { DshProviderManager, type ProviderPreset } from '../providers/provider-presets.js';
+import { DshTranscriptExporter } from '../export/transcript-exporter.js';
 
 export interface AgentControllerOptions {
   config: DshConfig;
   events?: DshEventStream;
   auditChain?: DshAuditChain;
+  checkpoints?: DshCheckpointEngine;
 }
 
 /**
@@ -26,6 +30,7 @@ export interface AgentControllerOptions {
 export class DshAgentController {
   public readonly events: DshEventStream;
   public readonly auditChain: DshAuditChain;
+  public readonly checkpoints: DshCheckpointEngine;
   private pluginClient = new DshPluginCatalogClient();
   private config: DshConfig;
   private currentSession: DshSession | null = null;
@@ -36,6 +41,7 @@ export class DshAgentController {
     this.config = options.config;
     this.events = options.events || new DshEventStream();
     this.auditChain = options.auditChain || new DshAuditChain();
+    this.checkpoints = options.checkpoints || new DshCheckpointEngine();
 
     this.initSession();
     this.setupInternalListeners();
@@ -310,5 +316,69 @@ export class DshAgentController {
    */
   public formatPluginList(plugins: PluginEntry[]): string {
     return this.pluginClient.formatPluginList(plugins, this.config.runtimeVersion || '0.1.0-rc.8');
+  }
+
+  /**
+   * Switch model provider preset (/provider switch <id> [model])
+   */
+  public switchProvider(providerId: string, modelName?: string): { success: boolean; message: string } {
+    const preset = DshProviderManager.getPreset(providerId);
+    if (!preset) {
+      return {
+        success: false,
+        message: `Unknown provider "${providerId}". Supported: ${Object.keys(DshProviderManager.listPresets()).join(', ')}`,
+      };
+    }
+
+    const session = this.getSession();
+    const targetModel = modelName || preset.defaultModel;
+    session.model = targetModel;
+    session.metrics = {
+      ...session.metrics,
+      contextLimit: preset.contextLimit,
+    };
+
+    this.events.emitEvent({
+      type: 'session:updated',
+      session,
+    });
+
+    return {
+      success: true,
+      message: `Switched provider to "${preset.name}" (Model: ${targetModel}, Context Limit: ${(preset.contextLimit / 1024).toFixed(0)}k)`,
+    };
+  }
+
+  /**
+   * List available provider presets
+   */
+  public listProviders(): string {
+    return DshProviderManager.formatPresetsList(this.config.provider || 'deepseek');
+  }
+
+  /**
+   * Undo the latest file modification checkpoint (/undo)
+   */
+  public undoLastMutation(): { success: boolean; message: string } {
+    const res = this.checkpoints.undo();
+    if (!res.success) {
+      return { success: false, message: res.error || 'Undo failed.' };
+    }
+
+    return {
+      success: true,
+      message: `Successfully rolled back ${res.revertedFiles.length} file(s):\n` + res.revertedFiles.map((f) => `  • ${f}`).join('\n'),
+    };
+  }
+
+  /**
+   * Export the current session transcript (/export [markdown|json])
+   */
+  public exportTranscript(format: 'markdown' | 'json' = 'markdown'): string {
+    const session = this.getSession();
+    if (format === 'json') {
+      return DshTranscriptExporter.toJson(session);
+    }
+    return DshTranscriptExporter.toMarkdown(session);
   }
 }

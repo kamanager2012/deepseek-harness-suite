@@ -9,3 +9,6 @@ export * from './security/risk-evaluator.js';
 export * from './security/audit-chain.js';
 export * from './marketplace/plugin-catalog.js';
 export * from './runtime/doctor.js';
+export * from './providers/provider-presets.js';
+export * from './checkpoint/checkpoint-engine.js';
+export * from './export/transcript-exporter.js';

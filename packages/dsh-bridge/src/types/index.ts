@@ -54,6 +54,7 @@ export interface DshMessage {
   id: string;
   role: DshRole;
   content: string;
+  reasoning?: string;
   reasoningContent?: string;
   toolCalls?: DshToolCall[];
   timestamp: number;
@@ -92,6 +93,7 @@ export interface DshConfig {
   apiKey?: string;
   baseUrl?: string;
   model?: string;
+  provider?: string;
   temperature?: number;
   maxTokens?: number;
   workspacePath?: string;

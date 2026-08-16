@@ -10,6 +10,9 @@ import { DshSharedSessionStore } from '../../src/session/session-store.js';
 import { DshAuditChain } from '../../src/security/audit-chain.js';
 import { DshDoctor } from '../../src/runtime/doctor.js';
 import { DshPluginCatalogClient } from '../../src/marketplace/plugin-catalog.js';
+import { DshProviderManager } from '../../src/providers/provider-presets.js';
+import { DshCheckpointEngine } from '../../src/checkpoint/checkpoint-engine.js';
+import { DshTranscriptExporter } from '../../src/export/transcript-exporter.js';
 import type { DshEvent } from '../../src/types/index.js';
 
 describe('DSH Bridge Contract Tests', () => {
@@ -335,6 +338,71 @@ describe('DSH Bridge Contract Tests', () => {
       const formatted = client.formatPluginList(plugins, '0.1.0-rc.8');
       expect(formatted).toContain('DSH Community Plugin Marketplace');
       expect(formatted).toContain('dsh plugin add');
+    });
+  });
+
+  describe('Multi-Provider Preset Manager', () => {
+    it('provides preset details and handles dynamic provider switching', () => {
+      const presets = DshProviderManager.listPresets();
+      expect(presets.length).toBeGreaterThanOrEqual(4);
+
+      const silicon = DshProviderManager.getPreset('siliconflow');
+      expect(silicon?.baseUrl).toContain('siliconflow.cn');
+
+      const controller = new DshAgentController({ config: {} });
+      const switchRes = controller.switchProvider('siliconflow');
+      expect(switchRes.success).toBe(true);
+      expect(controller.getSession().model).toBe('deepseek-ai/DeepSeek-R1');
+    });
+  });
+
+  describe('File Checkpoint & Mutation Undo Engine', () => {
+    it('captures pre-mutation snapshots and successfully rolls back changes', () => {
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-cp-test-'));
+      try {
+        const engine = new DshCheckpointEngine(tempDir);
+        const testFile = path.join(tempDir, 'sample.ts');
+        fs.writeFileSync(testFile, 'const initial = 1;', 'utf-8');
+
+        engine.snapshot([testFile], 'Before refactor');
+
+        // Mutate file
+        fs.writeFileSync(testFile, 'const modified = 2;', 'utf-8');
+        expect(fs.readFileSync(testFile, 'utf-8')).toBe('const modified = 2;');
+
+        // Undo
+        const undoRes = engine.undo();
+        expect(undoRes.success).toBe(true);
+        expect(fs.readFileSync(testFile, 'utf-8')).toBe('const initial = 1;');
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe('Session Transcript Exporter', () => {
+    it('exports session history into structured Markdown and JSON reports', () => {
+      const session = {
+        id: 'sess_export_1',
+        title: 'Export Test',
+        createdAt: 1700000000000,
+        updatedAt: 1700000010000,
+        workspacePath: '/tmp/workspace',
+        model: 'deepseek-reasoner',
+        messages: [
+          { id: 'm1', role: 'user' as const, content: 'Write a quicksort function', timestamp: 1700000000000, status: 'complete' as const },
+          { id: 'm2', role: 'assistant' as const, reasoning: 'Thinking about partition...', content: 'Here is quicksort in TypeScript', timestamp: 1700000005000, status: 'complete' as const },
+        ],
+        metrics: { promptTokens: 15, completionTokens: 40, totalTokens: 55, tps: 30, contextLimit: 128000, contextUsagePercent: 0.04 },
+      };
+
+      const md = DshTranscriptExporter.toMarkdown(session);
+      expect(md).toContain('DeepSeek Harness Session Transcript');
+      expect(md).toContain('Write a quicksort function');
+      expect(md).toContain('Thinking about partition...');
+
+      const json = DshTranscriptExporter.toJson(session);
+      expect(JSON.parse(json).id).toBe('sess_export_1');
     });
   });
 });
