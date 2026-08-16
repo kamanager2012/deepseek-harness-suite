@@ -8,14 +8,14 @@
 
 ```text
 Phase 2 — Edition → Community 合流     ✅ COMPLETED (3704e77)
-Phase 3 — 3-OS Release (v0.1.2)        ✅ COMPLETED (Linux AppImage / Win NSIS / macOS dmg)
-Phase 4 — Distribution Reality Gate    🔄 ACTIVE (exact v0.1.2 artifact / clean-machine smoke)
+Phase 3 — 3-OS Stable Release (v0.1.4) ✅ COMPLETED (Linux AppImage / Win NSIS / macOS dmg)
+Phase 4 — Distribution Reality Gate    🔄 ACTIVE (exact v0.1.4 artifact / clean-machine smoke)
   ├─ Plugin Supply Chain                ✅ MAIN WORK COMPLETE (9/9 install + compose)
   └─ Marketplace UX                     ✅ MAIN WORK COMPLETE (digest + provenance)
 Phase 1/5 — 知识库与全景治理          🔄 IN PROGRESS (Handbook / Ecosystem)
 ```
 
-`v0.1.2` 是已发布的三系统 Stable 基线；当前 `dsh-community` `main` 是发布后的可靠性修复线。`918f004`（Windows 完整依赖树暂存与 ready stamp）和 `e487cf0`（首次启动加载页）不能未经新 Release 说明就倒写为已包含在 `v0.1.2` 安装包中。
+`v0.1.4` 是当前已发布的三系统 Stable；最新 Preview 是 `v0.1.3`，代码/package 线为 `0.1.4`。当前 `dsh-community` `main` 可能继续包含发布后的文档、诊断和验证修复，不能把 main 结果倒写为已包含在 `v0.1.4` 安装包中。`v0.1.2` 仅作为第一个三系统 Stable 的历史基线保留。
 
 ### Suite (Community Labs) 真实性门禁快照
 
@@ -142,20 +142,22 @@ kamanager2012/dsh-community/releases/latest
 当前版本层级：
 
 ```text
-Stable Release:   v0.1.2
-Preview Release:  v0.1.2-preview (历史 Preview，保留用于回归对比)
-Codebase Trunk:   0.1.2
+Stable Release:   v0.1.4
+Preview Release:  v0.1.3 (当前最新 Preview)
+Codebase Trunk:   0.1.4
 ```
 
 目前 Release 资产已覆盖：
 
 ```text
-Linux AppImage (v0.1.2 已发布)
-Windows NSIS (v0.1.2 已发布)
-macOS dmg (v0.1.2 已发布)
+Linux AppImage (v0.1.4 已发布，可选/次要)
+Windows NSIS (v0.1.4 已发布)
+macOS dmg (v0.1.4 已发布)
 ```
 
-发布基线与开发线必须分开：`v0.1.2` 只代表 tag 上的固定资产；`main` 的后续可靠性修复要等新的 Release 才能成为用户下载事实。
+发布基线与开发线必须分开：`v0.1.4` 只代表 tag 上的固定资产；`main` 的后续文档、诊断和验证修复要等新的 Release 才能成为用户下载事实。
+
+最新 `artifact-smoke` 的 macOS exact job 已通过、Windows exact job 失败；因此三系统 Release 已发布，但 exact artifact 用户现实门禁仍为 `[UNVERIFIED]`。
 
 Windows / macOS 统一由 `dsh-community` 官方发布。
 
@@ -176,9 +178,9 @@ Windows / macOS 统一由 `dsh-community` 官方发布。
    > *“Official DSH, without locking you into another fork.”*
    > 坚持零源码魔改（Zero Vendoring/Patching），不同于竞品使用 patch-package 修改上游 UI，官方升级零迁移成本与锁定风险。
 
-2. **三端同源一体（One Harness. Three Surfaces）**
-   > *“你在官方 Web 启动的会话，关掉后在 TUI 秒级继续，切到 Desktop 还是同一份会话与工作区。”*
-   > 深度打通 `Official Web ↔ Community Desktop ↔ Community TUI`，均以 `~/.dsh` 作为官方会话真源，多端无损漫游。
+2. **三个社区端同源一体（One Harness. Three Community Endpoints）**
+   > *“你在官方 Web 启动的会话，关掉后在 WSL/Linux Terminal 秒级继续，切到 Windows 或 macOS Desktop 还是同一份会话与工作区。”*
+   > 深度打通 `Official Web ↔ WSL/Linux Terminal ↔ Windows/macOS Desktop`，均以 `~/.dsh` 作为官方会话真源；官方 Web 是上游兼容入口，不是 Community 发行端。
 
 3. **可验证插件生态（Verified Ecosystem - Trust over Volume）**
    > 不盲目与 Awesome 列表比拼 300+ 数量，而是建立 **可验证供应链（Verification Layer）**：
@@ -1397,14 +1399,15 @@ Labs 成熟功能分批晋升 Community
 
 # 三十一、当前最重要的产品工作是 Distribution Reality Gate
 
-`v0.1.2` 已经完成构建和三系统发布门槛。现在要验证的是：一个没有参与开发的人，下载 Release 页面上的真实安装包后能否完成用户闭环。
+`v0.1.4` 已经完成构建和三系统发布门槛。现在要验证的是：一个没有参与开发的人，下载 Release 页面上的真实安装包后能否完成用户闭环。
 
 必须直接测试 exact release artifact，而不是 main 源码或 CI artifact：
 
 ```text
-Windows clean VM → EXE 安装 → 首次启动 → 密钥 → new/resume → plugin → restart
-macOS clean host → dmg 安装 → 首次启动 → 密钥 → new/resume → plugin → restart
-Linux clean host → AppImage → 首次启动 → 密钥 → new/resume → plugin → restart
+Windows clean VM → `DSH.Community.Setup.0.1.4.exe` → 安装 → 首次启动 → 密钥 → new/resume → plugin → restart
+macOS clean host → `dsh-community-0.1.4.dmg` → 安装 → 首次启动 → 密钥 → new/resume → plugin → restart
+WSL/Linux clean host → `dsh-community` / `pnpm tui` → 密钥 → new/resume → plugin → restart
+Linux AppImage → `dsh-community-0.1.4.AppImage` → 可选/次要 artifact smoke
 ```
 
 还要覆盖：
@@ -1414,7 +1417,9 @@ Linux clean host → AppImage → 首次启动 → 密钥 → new/resume → plu
 - 断网；
 - 缺少 API key；
 - Runtime 解压中断或半截失败；
-- Web ↔ Desktop ↔ TUI 是否共享同一 `~/.dsh` Session。
+- 官方 Web ↔ WSL/Linux TUI ↔ Windows/macOS Desktop 是否共享同一 `~/.dsh` Session。
+
+最新 `artifact-smoke` run [31935679026](https://github.com/kamanager2012/dsh-community/actions/runs/31935679026) 的 macOS exact job 通过、Windows exact job 失败；因此本门禁仍标为 `[UNVERIFIED]`。
 
 在这些证据产生前，不能把“普通 CI 通过”或“main 已修复”写成 Stable 用户现实已验证。
 

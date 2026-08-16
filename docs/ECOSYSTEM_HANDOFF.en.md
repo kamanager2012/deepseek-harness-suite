@@ -21,42 +21,45 @@ Checkpoint, Undo, audit, and runtime probes. It is not a second user distributio
 
 ```text
 Phase 2 — Edition → Community       ✅ completed
-Phase 3 — 3-OS Stable baseline      ✅ v0.1.2 published
+Phase 3 — 3-OS Stable baseline      ✅ v0.1.4 published
 Phase 4 — Distribution Reality Gate 🔄 active
   ├─ Plugin supply chain            ✅ main work complete (9/9 install + compose)
   └─ Marketplace UX                 ✅ main work complete (digest + provenance)
 Phase 5 — Handbook drift CI         ⏳ not started
 ```
 
-`v0.1.2` is the fixed three-platform Stable baseline. Current `dsh-community` `main`
-is a post-release reliability line: `918f004` improves Windows dependency staging and
-ready stamps, while `e487cf0` shows a loading window before first-launch extraction.
-Do not claim those fixes are in the published `v0.1.2` assets without a new Release.
+`v0.1.4` is the current three-platform Stable. The latest Preview is `v0.1.3` and the
+code/package line is `0.1.4`. Current `dsh-community` `main` may contain post-release
+documentation, diagnostics, and verification fixes; do not write main results back into
+the published `v0.1.4` assets. `v0.1.2` is retained only as the historical first
+three-platform baseline.
 
 ### Distribution Reality Gate
 
-The next evidence must come from the exact files downloaded from the `v0.1.2` Release,
+The next evidence must come from the exact files downloaded from the `v0.1.4` Release,
 not from main-source builds or generic CI:
 
 ```text
-Windows clean VM → EXE install → first launch → key → new/resume → plugin → restart
-macOS clean host → dmg install → first launch → key → new/resume → plugin → restart
-Linux clean host → AppImage → first launch → key → new/resume → plugin → restart
+Windows clean VM → DSH.Community.Setup.0.1.4.exe → install → first launch → key → new/resume → plugin → restart
+macOS clean host → dsh-community-0.1.4.dmg → install → first launch → key → new/resume → plugin → restart
+WSL/Linux clean host → dsh-community / pnpm tui → key → new/resume → plugin → restart
+Linux AppImage → dsh-community-0.1.4.AppImage → optional secondary artifact smoke
 ```
 
 Uninstall/reinstall, upgrade, bad network, missing credentials, interrupted Runtime
-extraction, and Web ↔ Desktop ↔ TUI Session sharing remain exact-artifact acceptance
-scenarios and must be labelled `[UNVERIFIED]` until actually run.
+extraction, and Official Web ↔ WSL/Linux TUI ↔ Windows/macOS Desktop Session sharing
+remain exact-artifact acceptance scenarios and must be labelled `[UNVERIFIED]` until
+actually run. The latest exact-artifact smoke passed on macOS but failed on Windows.
 
 ### Current Community release snapshot
 
 ```text
-Stable Release:   v0.1.2
-Preview Release:  v0.1.2-preview (historical Preview retained for regression comparison)
-Codebase Trunk:   0.1.2
+Stable Release:   v0.1.4
+Preview Release:  v0.1.3 (latest Preview)
+Codebase Trunk:   0.1.4
 ```
 
-The v0.1.2 GitHub Release publishes the Linux AppImage, macOS dmg, and Windows NSIS
+The v0.1.4 GitHub Release publishes the Linux AppImage, macOS dmg, and Windows NSIS
 installer. Suite remains an experimental source and is not a download channel.
 
 | Area | Status | Evidence boundary |
