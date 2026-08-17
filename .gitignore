@@ -29,3 +29,11 @@ Thumbs.db
 .env
 .env.local
 .env.*.local
+
+# Android
+apps/android/.gradle/
+apps/android/build/
+apps/android/app/build/
+apps/android/local.properties
+apps/android/keystore.jks
+apps/android/.kotlin/

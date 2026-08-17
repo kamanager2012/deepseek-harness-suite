@@ -23,6 +23,7 @@ README、单元测试或 fallback 成功都不能单独把能力标成 `[REAL]`�
 | Interactive approval | `[BLOCKED_BY_UPSTREAM]` | 客户端可以判定风险，但官方 SDK 尚未提供完整 server→client approval 闭环 |
 | Checkpoint | `[WORKSPACE-JAIL]` / `[PARTIAL]` | 工作区边界和越界防护已有；记录仍主要是进程生命周期内存状态，不应宣称 durable undo |
 | Official Session | `[READ-SAFE]` | `~/.dsh/sessions` 只读；Suite 数据使用独立目录 |
+| Android 端点（Termux runtime） | `[UNVERIFIED]` | `scripts/termux-verify.sh` 未在真机通过前，不宣称安卓端任何能力；Node 引擎（^22.19）与 `sharp` 原生依赖为已知风险，见 [android-endpoint.md](android-endpoint.md) |
 
 ## 运行本地证据
 
