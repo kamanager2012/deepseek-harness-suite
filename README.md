@@ -64,27 +64,32 @@ or the [English handoff](docs/ECOSYSTEM_HANDOFF.en.md). The evidence matrix is i
 
 ---
 
-## 🌟 Product Architecture: One Harness. Three Community Endpoints.
+## 🌟 Product Architecture: One Harness. Four Community Endpoints.
 
 ```text
                          Official DeepSeek Harness Runtime
                                        │
                       (Shared ~/.dsh Single Session Truth)
                                        │
-        ┌──────────────────────────────┼──────────────────────────────┐
-        │                              │                              │
-        ▼                              ▼                              ▼
+        ┌──────────────────────────────┼───────────────────────────────┐
+        │                              │                               │
+        ▼                              ▼                               ▼
   WSL / Linux                   Windows Desktop                 macOS Desktop
     Terminal                  (DSH Community Setup)          (DSH Community .dmg)
 (Developer / CLI)            (Download → Install → Run)      (Download → Install → Run)
-        │                              │                              │
-        └──────────────────────────────┴──────────────────────────────┘
+        │                              │                               │
+        │                              ▼                               │
+        │                       Android Mobile                        │
+        │                   (WebView + nodejs-mobile)                 │
+        │                      `[UNVERIFIED]`                          │
+        └──────────────────────────────┴───────────────────────────────┘
                                        │
                       Canonical Distribution: dsh-community
 ```
 
 * **Official Web**: Upstream companion interface sharing the same `~/.dsh` session store.
 * **Linux AppImage**: Secondary / headless build artifact (WSL/Linux Terminal is the primary Linux user path).
+* **Android**: fourth community endpoint, APK shell over the official runtime; `[UNVERIFIED]` until the Termux verification (`scripts/termux-verify.sh`) passes — see [`docs/android-endpoint.md`](./docs/android-endpoint.md).
 
 ---
 
@@ -95,6 +100,7 @@ or the [English handoff](docs/ECOSYSTEM_HANDOFF.en.md). The evidence matrix is i
 | [`@dsh-community/dsh-bridge`](./packages/dsh-bridge) | Anti-Corruption Layer, Runtime Client & Process Supervisor | `[PARTIAL]` / Labs |
 | [`@dsh-community/tui`](./apps/tui) | Terminal UX (Ink / Yoga) | `[LABS]` |
 | [`@dsh-community/desktop`](./apps/desktop) | Desktop Shell (Electron + Subprocess Manager) | `[LABS]` |
+| [`dsh-android`](./apps/android) | Android APK Shell (WebView + nodejs-mobile) | `[UNVERIFIED]` |
 
 ---
 
