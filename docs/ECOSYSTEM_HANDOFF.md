@@ -15,7 +15,7 @@ Phase 4 — Distribution Reality Gate    🔄 ACTIVE (exact v0.1.4 artifact / cl
 Phase 1/5 — 知识库与全景治理          🔄 IN PROGRESS (Handbook / Ecosystem)
 ```
 
-`v0.1.4` 是当前已发布的三系统 Stable；最新 Preview 是 `v0.1.3`，代码/package 线为 `0.1.4`。当前 `dsh-community` `main` 可能继续包含发布后的文档、诊断和验证修复，不能把 main 结果倒写为已包含在 `v0.1.4` 安装包中。`v0.1.2` 仅作为第一个三系统 Stable 的历史基线保留。
+Canonical 产品当前 Latest 是 `dsh-community` **v0.1.1-rc.1**（基于官方内核 `@deepseek-ai/dsh@0.1.1-rc.1`）。Labs 上次完整验证线仍是 `0.1.0-rc.6`；未在新 pin 上重跑前，不要把 Suite 写成已验证 0.1.1-rc.1。`v0.1.2`–`v0.1.4` 是历史独立编号，不再当下载入口。
 
 ### Suite (Community Labs) 真实性门禁快照
 
@@ -34,11 +34,11 @@ True SDK runtime E2E                       UNVERIFIED (Pending upstream JSON-RPC
 
 # 一、项目到底在做什么
 
-我们不是要复制 DeepSeek Harness，也不是简单给官方项目套一个壳。
+官方 DeepSeek Harness 是内核。Labs 基于官方内核做实验验证，不另造执行核心。
 
 核心原则是：
 
-> **官方 DeepSeek Harness Runtime 负责真正的 Agent 执行核心；社区项目围绕官方 Runtime 做发行、兼容、插件、知识、治理、安全和更好的用户体验。**
+> **官方 Runtime 是内核。Community 基于官方内核做发行、入口和外围验证。Labs 只做实验，不另起一套执行核心。**
 
 项目方法论：
 

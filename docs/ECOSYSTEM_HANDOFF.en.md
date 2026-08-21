@@ -28,11 +28,10 @@ Phase 4 — Distribution Reality Gate 🔄 active
 Phase 5 — Handbook drift CI         ⏳ not started
 ```
 
-`v0.1.4` is the current three-platform Stable. The latest Preview is `v0.1.3` and the
-code/package line is `0.1.4`. Current `dsh-community` `main` may contain post-release
-documentation, diagnostics, and verification fixes; do not write main results back into
-the published `v0.1.4` assets. `v0.1.2` is retained only as the historical first
-three-platform baseline.
+Canonical Latest is `dsh-community` **v0.1.1-rc.1**, based on official kernel
+`@deepseek-ai/dsh@0.1.1-rc.1`. Labs last fully verified `0.1.0-rc.6`; do not write
+Suite as verified on 0.1.1-rc.1 until that pin is re-run. `v0.1.2`–`v0.1.4` are
+historical independent numbers, not the current download.
 
 ### Distribution Reality Gate
 
