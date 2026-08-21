@@ -15,7 +15,7 @@ Phase 4 — Distribution Reality Gate    🔄 ACTIVE (exact v0.1.4 artifact / cl
 Phase 1/5 — 知识库与全景治理          🔄 IN PROGRESS (Handbook / Ecosystem)
 ```
 
-Canonical 产品当前 Latest 是 `dsh-community` **v0.1.1-rc.1**（基于官方内核 `@deepseek-ai/dsh@0.1.1-rc.1`）。Labs 上次完整验证线仍是 `0.1.0-rc.6`；未在新 pin 上重跑前，不要把 Suite 写成已验证 0.1.1-rc.1。`v0.1.2`–`v0.1.4` 是历史独立编号，不再当下载入口。
+Canonical 产品 Latest / 内核 pin 以 [`dsh-community/docs/current-release.json`](https://github.com/kamanager2012/dsh-community/blob/main/docs/current-release.json) 为准。Labs 上次完整验证线仍是 `0.1.0-rc.6`；未在新 pin 上重跑前，不要把 Suite 写成已验证当前 Latest。历史独立编号不再当下载入口。
 
 ### Suite (Community Labs) 真实性门禁快照
 

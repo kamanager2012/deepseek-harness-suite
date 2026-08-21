@@ -19,7 +19,7 @@ Bridge、SDK transport、安全、Checkpoint、审计和实验性 TUI / Desktop 
 
 | 仓库 | 定位 | 入口 |
 |---|---|---|
-| [`dsh-community`](https://github.com/kamanager2012/dsh-community) | Canonical Product，唯一正式下载入口 | [Latest `v0.1.1-rc.1`](https://github.com/kamanager2012/dsh-community/releases/latest) |
+| [`dsh-community`](https://github.com/kamanager2012/dsh-community) | Canonical Product，唯一正式下载入口 | [Latest](https://github.com/kamanager2012/dsh-community/releases/latest) · [current-release.json](https://github.com/kamanager2012/dsh-community/blob/main/docs/current-release.json) |
 | [`deepseek-harness-handbook`](https://github.com/kamanager2012/deepseek-harness-handbook) | 知识、证据和运维手册 | [在线手册](https://kamanager2012.github.io/deepseek-harness-handbook/) |
 | [`dsh-community-plugins`](https://github.com/kamanager2012/dsh-community-plugins) | 插件兼容性注册表 | [Registry](https://github.com/kamanager2012/dsh-community-plugins) |
 | [`dsh-marketplace`](https://github.com/kamanager2012/dsh-marketplace) | 插件发现和安装体验 | [Marketplace](https://github.com/kamanager2012/dsh-marketplace) |
