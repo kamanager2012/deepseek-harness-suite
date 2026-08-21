@@ -20,7 +20,7 @@ as Canary, Preview, or Stable.
 
 | Repository | Role | Link |
 |---|---|---|
-| [`dsh-community`](https://github.com/kamanager2012/dsh-community) | Canonical Product; the only normal download entry | [Latest release](https://github.com/kamanager2012/dsh-community/releases/latest) |
+| [`dsh-community`](https://github.com/kamanager2012/dsh-community) | Canonical Product; the only normal download entry | [Latest `v0.1.1-rc.1`](https://github.com/kamanager2012/dsh-community/releases/latest) |
 | [`deepseek-harness-handbook`](https://github.com/kamanager2012/deepseek-harness-handbook) | Knowledge, evidence, and operations | [Online handbook](https://kamanager2012.github.io/deepseek-harness-handbook/) |
 | [`dsh-community-plugins`](https://github.com/kamanager2012/dsh-community-plugins) | Compatibility registry | [Catalog](https://github.com/kamanager2012/dsh-community-plugins) |
 | [`dsh-marketplace`](https://github.com/kamanager2012/dsh-marketplace) | Discovery and install UX | [Repository](https://github.com/kamanager2012/dsh-marketplace) |
