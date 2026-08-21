@@ -28,10 +28,11 @@ Phase 4 — Distribution Reality Gate 🔄 active
 Phase 5 — Handbook drift CI         ⏳ not started
 ```
 
-Canonical Latest is `dsh-community` **v0.1.1-rc.1**, based on official kernel
-`@deepseek-ai/dsh@0.1.1-rc.1`. Labs last fully verified `0.1.0-rc.6`; do not write
-Suite as verified on 0.1.1-rc.1 until that pin is re-run. `v0.1.2`–`v0.1.4` are
-historical independent numbers, not the current download.
+Canonical Latest / kernel pin live in
+[`dsh-community/docs/current-release.json`](https://github.com/kamanager2012/dsh-community/blob/main/docs/current-release.json).
+Labs last fully verified `0.1.0-rc.6`; do not write Suite as verified on the
+current Latest until that pin is re-run. Historical independent numbers are not
+the current download.
 
 ### Distribution Reality Gate
 
