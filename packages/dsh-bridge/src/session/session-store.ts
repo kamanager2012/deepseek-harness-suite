@@ -20,6 +20,33 @@ export interface DshSessionSummary {
   isOfficial?: boolean;
 }
 
+const SAFE_SESSION_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
+/**
+ * Session ids are interpolated into filesystem paths; reject any value that
+ * could escape the sessions directory (path separators, traversal segments,
+ * NUL/control bytes) instead of letting it reach fs calls.
+ */
+export function sanitizeSessionId(sessionId: string): string {
+  if (typeof sessionId !== 'string' || sessionId.length === 0) {
+    throw new TypeError(`Invalid session id: must be a non-empty string`);
+  }
+  if (
+    sessionId.includes('/') ||
+    sessionId.includes('\\') ||
+    sessionId.includes('..') ||
+    sessionId.includes('\0')
+  ) {
+    throw new TypeError(`Invalid session id (path-unsafe characters rejected): "${sessionId}"`);
+  }
+  if (!SAFE_SESSION_ID_PATTERN.test(sessionId)) {
+    throw new TypeError(
+      `Invalid session id (must match ${SAFE_SESSION_ID_PATTERN.source}): "${sessionId}"`
+    );
+  }
+  return sessionId;
+}
+
 /**
  * Session Store Adapter (Read-Safe & Segregated)
  * 
@@ -249,8 +276,9 @@ export class DshSharedSessionStore {
    * Read full session by ID from suite sessions or official read-only storage
    */
   public readSession(sessionId: string): DshSession | null {
-    // 1. First check suite sessions
-    const suiteFilePath = path.join(this.suiteSessionsDir, `${sessionId}.json`);
+    // 1. First check suite sessions (sanitized: id is used as a filename)
+    const safeId = sanitizeSessionId(sessionId);
+    const suiteFilePath = path.join(this.suiteSessionsDir, `${safeId}.json`);
     if (fs.existsSync(suiteFilePath)) {
       try {
         return JSON.parse(fs.readFileSync(suiteFilePath, 'utf-8'));
@@ -276,10 +304,11 @@ export class DshSharedSessionStore {
     if (!fs.existsSync(this.suiteSessionsDir)) {
       fs.mkdirSync(this.suiteSessionsDir, { recursive: true });
     }
-    const targetFile = path.join(this.suiteSessionsDir, `${session.id}.json`);
+    const safeId = sanitizeSessionId(session.id);
+    const targetFile = path.join(this.suiteSessionsDir, `${safeId}.json`);
     const tempFile = path.join(
       this.suiteSessionsDir,
-      `.${session.id}.${Date.now()}.${Math.random().toString(36).slice(2, 7)}.tmp`
+      `.${safeId}.${Date.now()}.${Math.random().toString(36).slice(2, 7)}.tmp`
     );
 
     fs.writeFileSync(tempFile, JSON.stringify(session, null, 2), 'utf-8');

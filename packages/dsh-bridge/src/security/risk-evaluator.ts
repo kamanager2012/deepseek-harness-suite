@@ -113,7 +113,10 @@ export class DshRiskEvaluator {
     if (binary === 'npm' && tokens[1] === '-v') return true;
     if (binary === 'pnpm' && tokens[1] === '-v') return true;
     if (binary === 'tsc' && tokens[1] === '--noEmit') return true;
-    if (binary === 'vitest' && tokens[1] === 'run') return true;
+    // NOTE: test runners (vitest/jest/node <file>) are intentionally NOT on this
+    // list: executing a test file runs arbitrary code inside it (config and
+    // setupFiles can delete files, mutate the workspace, or exfiltrate env),
+    // so such commands fall through to the default approval-required path.
 
     // 3. Git read-only subcommands
     if (binary === 'git' && tokens[1]) {
@@ -218,6 +221,23 @@ export class DshRiskEvaluator {
   }
 
   /**
+   * Scan a raw shell command string token-by-token for protected credential files.
+   * Structured args.path checks do not cover shell arguments (e.g. `cat ~/.ssh/id_rsa`),
+   * so every whitespace-separated token is matched against the sensitive-credential rules.
+   */
+  private static findSensitiveCredentialToken(commandStr: string): string | null {
+    const matcher = new DshIgnoreMatcher();
+    for (const rawToken of commandStr.split(/\s+/)) {
+      const token = rawToken.replace(/^['"]|['"]$/g, '');
+      if (!token || token.startsWith('-')) continue;
+      if (matcher.isSensitiveCredential(token)) {
+        return token;
+      }
+    }
+    return null;
+  }
+
+  /**
    * Evaluate risk level and approval requirement based on capability semantics
    */
   public static evaluate(
@@ -229,27 +249,7 @@ export class DshRiskEvaluator {
     const capabilities = this.inferCapabilities(tool, args);
     const toolName = typeof tool === 'object' ? tool.name : tool;
 
-    // 1. Unrestricted policy override
-    if (policy === 'unrestricted') {
-      return {
-        riskLevel: 'low',
-        requiresApproval: false,
-        capabilities,
-        reason: 'Auto-approved by unrestricted policy',
-      };
-    }
-
-    // 2. Strict policy override
-    if (policy === 'strict') {
-      return {
-        riskLevel: 'high',
-        requiresApproval: true,
-        capabilities,
-        reason: 'Human approval required by strict policy',
-      };
-    }
-
-    // 3. Sensitive file and credential protection check
+    // 1. Sensitive file and credential protection check — no approval policy may bypass this guard
     const targetFile = String(args.path || args.targetFile || args.filePath || args.file_path || args.TargetFile || '');
     if (targetFile) {
       const matcher = new DshIgnoreMatcher();
@@ -263,7 +263,7 @@ export class DshRiskEvaluator {
       }
     }
 
-    // 4. Process execution & strict shell inspection
+    // 2. Destructive command pattern & credential-argument inspection — no approval policy may bypass these guards
     const commandStr = String(args.command || args.cmd || args.script || args.CommandLine || '');
     if (commandStr) {
       for (const pattern of CRITICAL_COMMAND_PATTERNS) {
@@ -276,6 +276,39 @@ export class DshRiskEvaluator {
           };
         }
       }
+
+      const sensitiveToken = this.findSensitiveCredentialToken(commandStr);
+      if (sensitiveToken) {
+        return {
+          riskLevel: 'critical',
+          requiresApproval: true,
+          capabilities: [...capabilities, 'credential:read'],
+          reason: `Shell command references protected credentials (.dshignore): "${sensitiveToken}"`,
+        };
+      }
+    }
+
+    // 3. Policy overrides — only reachable once the non-bypassable guards above have passed
+    if (policy === 'unrestricted') {
+      return {
+        riskLevel: 'low',
+        requiresApproval: false,
+        capabilities,
+        reason: 'Auto-approved by unrestricted policy (critical & credential guards passed)',
+      };
+    }
+
+    if (policy === 'strict') {
+      return {
+        riskLevel: 'high',
+        requiresApproval: true,
+        capabilities,
+        reason: 'Human approval required by strict policy',
+      };
+    }
+
+    // 4. Process execution & strict shell inspection
+    if (commandStr) {
 
       // Check if command is strictly a safe, non-compound read-only shell command
       const isStrictSafe = this.isStrictReadOnlyShellCommand(commandStr);

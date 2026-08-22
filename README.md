@@ -59,7 +59,7 @@ or the [English handoff](docs/ECOSYSTEM_HANDOFF.en.md). The evidence matrix is i
 | **Checkpoint & Workspace Jail** | `[WORKSPACE-JAIL]` | `DshCheckpointEngine` binds to `config.workspacePath`, enforces ancestor symlink containment, NUL/control byte filtering, and 5MB snapshot memory cap. |
 | **Session Safety Gate** | `[READ-SAFE]` | Official `~/.dsh/sessions` is strictly **Read-Only** to prevent state corruption; Suite uses `~/.dsh/suite_sessions`. |
 | **Diagnostics & Health** | `[REAL]` | `/doctor` executes five-layer system checks (Node version, process isolation, API keys, token budget). |
-| **Tamper-Evident Audit** | `[REAL]` | `/audit` maintains cryptographic SHA-256 hash chains over every tool invocation & approval decision. |
+| **Tamper-Evident Audit** | `[REAL]` | `/audit` maintains a SHA-256 hash chain over approval decisions **and** individual tool invocations/results (start/end pairs with duration); persisted per session to `~/.dsh/suite_audit/<sessionId>.audit.jsonl`, resumed via verified `loadAndVerify` on restart. Disk failures surface as `writeFailures` without ever blocking execution. |
 | **Rollback & Fork** | `[UI-LEVEL]` | `/message-rewind` and `/conversation-fork` (UI-level rewind until upstream exposes runtime checkpoint APIs). |
 
 ---

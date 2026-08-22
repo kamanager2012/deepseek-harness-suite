@@ -17,6 +17,11 @@ import { DshIgnoreMatcher } from '../../src/security/dsh-ignore.js';
 import { DshRiskEvaluator } from '../../src/security/risk-evaluator.js';
 import type { DshEvent } from '../../src/types/index.js';
 
+// Controller-managed audit chains must stay out of the real user home during
+// tests; point the suite audit dir at an isolated temp location before any
+// DshAgentController is constructed.
+process.env.DSH_SUITE_AUDIT_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-contract-audit-'));
+
 describe('DSH Bridge Contract Tests', () => {
   describe('Event Normalization & Projection', () => {
     it('normalizes streaming reasoning/thought events correctly', () => {
@@ -116,6 +121,54 @@ describe('DSH Bridge Contract Tests', () => {
       expect(evalSafeGit.requiresApproval).toBe(false);
     });
 
+    it('fails closed on wire-supplied unrestricted policy for destructive or sensitive tools', () => {
+      // 1. Evaluator semantics: even an explicitly passed 'unrestricted' policy must
+      //    never bypass critical-command-pattern and .dshignore credential guards.
+      const evalRm = DshRiskEvaluator.evaluate('run_command', { command: 'rm -rf /' }, undefined, 'unrestricted');
+      expect(evalRm.riskLevel).toBe('critical');
+      expect(evalRm.requiresApproval).toBe(true);
+
+      const evalEnv = DshRiskEvaluator.evaluate('read_file', { path: '/workspace/.env' }, undefined, 'unrestricted');
+      expect(evalEnv.riskLevel).toBe('critical');
+      expect(evalEnv.requiresApproval).toBe(true);
+
+      // 2. Wire projection end-to-end: approvalPolicy:'unrestricted' from raw upstream
+      //    data must be rejected (whitelist fallback to auto_safe), so rm -rf /
+      //    still requires human approval.
+      const stream = new DshEventStream();
+      const events: DshEvent[] = [];
+      stream.onEvent((e) => events.push(e));
+
+      stream.projectRawUpstreamEvent({
+        type: 'tool/call',
+        id: 'call_evil_wire_1',
+        name: 'run_command',
+        args: { command: 'rm -rf /' },
+        approvalPolicy: 'unrestricted',
+      });
+
+      expect(events.find((e) => e.type === 'tool:approval_needed')).toBeDefined();
+      const requested = events.find((e) => e.type === 'tool:requested');
+      if (requested && requested.type === 'tool:requested') {
+        expect(requested.toolCall.status).toBe('pending_approval');
+        expect(requested.toolCall.riskLevel).toBe('critical');
+      }
+    });
+
+    it('requires approval for test-runner execution because test files run arbitrary code', () => {
+      // vitest/jest execute whatever lives in config files, setupFiles, and the
+      // tests themselves — they must not ride the read-only auto-approve list.
+      for (const cmd of [
+        'vitest run',
+        'vitest run src/security',
+        'vitest run --config ./evil.config.ts',
+      ]) {
+        const evaluation = DshRiskEvaluator.evaluate('run_command', { command: cmd });
+        expect(evaluation.riskLevel).toBe('high');
+        expect(evaluation.requiresApproval).toBe(true);
+      }
+    });
+
     it('normalizes TPS and token usage metrics', () => {
       const stream = new DshEventStream();
       let capturedMetrics: any = null;
@@ -207,6 +260,35 @@ describe('DSH Bridge Contract Tests', () => {
       expect(port).toBeGreaterThanOrEqual(45000);
       expect(typeof port).toBe('number');
     });
+
+    it('stops the health poll when the subprocess errors without exiting', async () => {
+      // A spawn failure (ENOENT) emits 'error' with no matching 'exit'; the
+      // supervisor must tear down its 2s health interval instead of spinning.
+      const setIntervalSpy = vi.spyOn(global, 'setInterval');
+      const clearIntervalSpy = vi.spyOn(global, 'clearInterval');
+      const manager = new DshSubprocessManager({
+        config: {},
+        customExecutable: 'dsh-definitely-missing-binary',
+        customArgs: [],
+      });
+
+      try {
+        await manager.start();
+        const startedTimer = setIntervalSpy.mock.results.at(-1)?.value;
+        expect(startedTimer).toBeDefined();
+
+        // Give the spawn 'error' event time to fire.
+        await new Promise((resolve) => setTimeout(resolve, 50));
+
+        expect(manager.getHealth().running).toBe(false);
+        expect(clearIntervalSpy).toHaveBeenCalledWith(startedTimer);
+        expect((manager as any).healthCheckTimer).toBeNull();
+      } finally {
+        setIntervalSpy.mockRestore();
+        clearIntervalSpy.mockRestore();
+        await manager.stop();
+      }
+    });
   });
 
   describe('Context Overflow Guard & Compaction Advisor', () => {
@@ -288,6 +370,63 @@ describe('DSH Bridge Contract Tests', () => {
       }
     });
 
+    it('rejects session ids attempting filesystem path traversal', () => {
+      const tempOfficial = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-off3-test-'));
+      const tempSuite = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-suite3-test-'));
+      try {
+        const store = new DshSharedSessionStore(tempOfficial, tempSuite);
+        const baseSession = {
+          title: 'Traversal Attempt',
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          workspacePath: '/tmp/workspace',
+          model: 'deepseek-reasoner',
+          messages: [],
+          metrics: { promptTokens: 0, completionTokens: 0, totalTokens: 0, tps: 0, contextLimit: 128000, contextUsagePercent: 0 },
+        };
+
+        expect(() => store.readSession('../evil')).toThrow(TypeError);
+        expect(() => store.readSession('../../etc/passwd')).toThrow(TypeError);
+        expect(() => store.readSession('..\\windows\\evil')).toThrow(TypeError);
+        expect(() => store.saveSession({ ...baseSession, id: 'a\x00b' } as any)).toThrow(TypeError);
+        expect(() => store.saveSession({ ...baseSession, id: 'sub/dir/evil' } as any)).toThrow(TypeError);
+
+        // Nothing may have been written outside (or inside) the suite directory
+        expect(fs.readdirSync(tempSuite)).toHaveLength(0);
+      } finally {
+        fs.rmSync(tempOfficial, { recursive: true, force: true });
+        fs.rmSync(tempSuite, { recursive: true, force: true });
+      }
+    });
+
+    it('accepts well-formed session ids through the save/read roundtrip', () => {
+      const tempOfficial = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-off4-test-'));
+      const tempSuite = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-suite4-test-'));
+      try {
+        const store = new DshSharedSessionStore(tempOfficial, tempSuite);
+        const session = {
+          id: 'sess_ABC-123._x9',
+          title: 'Well Formed Id',
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          workspacePath: '/tmp/workspace',
+          model: 'deepseek-reasoner',
+          messages: [{ id: 'm1', role: 'user' as const, content: 'Hello', timestamp: Date.now(), status: 'complete' as const }],
+          metrics: { promptTokens: 1, completionTokens: 2, totalTokens: 3, tps: 1, contextLimit: 128000, contextUsagePercent: 0 },
+        };
+
+        store.saveSession(session);
+
+        const readBack = store.readSession('sess_ABC-123._x9');
+        expect(readBack).not.toBeNull();
+        expect(readBack?.title).toBe('Well Formed Id');
+        expect(fs.readdirSync(tempSuite)).toContain('sess_ABC-123._x9.json');
+      } finally {
+        fs.rmSync(tempOfficial, { recursive: true, force: true });
+        fs.rmSync(tempSuite, { recursive: true, force: true });
+      }
+    });
+
     it('handles controller system notifications and session resume helper', () => {
       const tempOfficial = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-off2-test-'));
       const tempSuite = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-suite2-test-'));
@@ -339,6 +478,124 @@ describe('DSH Bridge Contract Tests', () => {
 
       const verification = chain.verify();
       expect(verification.valid).toBe(true);
+    });
+
+    it('persists to disk and loadAndVerify resumes the chain from the file tail', () => {
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-audit-disk-'));
+      try {
+        // Writer chain persists every record.
+        const writer = new DshAuditChain(tempDir, 'sess_disk');
+        const r1 = writer.append({
+          sessionId: 'sess_disk',
+          toolName: 'read_file',
+          args: { path: '/tmp/a.ts' },
+          riskLevel: 'low',
+          verdict: 'auto_approved',
+          durationMs: 12,
+          status: 'success',
+        });
+        const r2 = writer.append({
+          sessionId: 'sess_disk',
+          toolName: 'run_command',
+          args: { command: 'git status' },
+          riskLevel: 'low',
+          verdict: 'auto_approved',
+          durationMs: 340,
+          status: 'failed',
+        });
+
+        const logPath = path.join(tempDir, 'sess_disk.audit.jsonl');
+        expect(fs.existsSync(logPath)).toBe(true);
+
+        // Fresh process: load the persisted log back and verify every link
+        // (durationMs/status are now part of the hashed content).
+        const loader = new DshAuditChain();
+        const loadRes = loader.loadAndVerify(logPath);
+        expect(loadRes.valid).toBe(true);
+        expect(loadRes.loaded).toBe(2);
+
+        // In-memory chain continues seamlessly from the file tail.
+        const r3 = loader.append({
+          sessionId: 'sess_disk',
+          toolName: 'write_file',
+          args: { path: '/tmp/b.ts' },
+          riskLevel: 'medium',
+          verdict: 'approved_once',
+          status: 'success',
+        });
+        expect(r3.seq).toBe(3);
+        expect(r3.prevHash).toBe(r2.hash);
+
+        // The continuation must also persist and re-verify from scratch.
+        const reloader = new DshAuditChain();
+        expect(reloader.loadAndVerify(logPath)).toEqual({ valid: true, loaded: 3 });
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it('throws when a persisted audit log line has been tampered with', () => {
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-audit-tamper-'));
+      try {
+        const writer = new DshAuditChain(tempDir, 'sess_evil');
+        writer.append({
+          sessionId: 'sess_evil',
+          toolName: 'read_file',
+          args: { path: '/tmp/innocent.ts' },
+          riskLevel: 'low',
+          verdict: 'auto_approved',
+        });
+        writer.append({
+          sessionId: 'sess_evil',
+          toolName: 'read_file',
+          args: { path: '/workspace/.env' },
+          riskLevel: 'critical',
+          verdict: 'rejected',
+        });
+
+        const logPath = path.join(tempDir, 'sess_evil.audit.jsonl');
+
+        // Hand-edit the middle record: swap a rejected credential read into an approved one.
+        const lines = fs.readFileSync(logPath, 'utf-8').split('\n').filter((l) => l.trim());
+        const rec = JSON.parse(lines[1]);
+        rec.verdict = 'auto_approved';
+        rec.riskLevel = 'low';
+        lines[1] = JSON.stringify(rec);
+        fs.writeFileSync(logPath, lines.join('\n') + '\n', 'utf-8');
+
+        expect(() => new DshAuditChain().loadAndVerify(logPath)).toThrow(/content hash mismatch/);
+
+        // Also reject raw corruption (invalid JSON line).
+        fs.writeFileSync(logPath, lines[0] + '\n{not json\n', 'utf-8');
+        expect(() => new DshAuditChain().loadAndVerify(logPath)).toThrow(/invalid JSON/);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it('counts disk persistence failures instead of silently dropping them', () => {
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-audit-wfail-'));
+      try {
+        // Point the audit dir at a regular FILE: appendFileSync can never succeed,
+        // but records stay in memory (old behavior swallowed this entirely).
+        const blockingFile = path.join(tempDir, 'not-a-dir');
+        fs.writeFileSync(blockingFile, 'occupied', 'utf-8');
+        const chain = new DshAuditChain(blockingFile, 'sess_wfail');
+
+        chain.append({ sessionId: 'sess_wfail', toolName: 'read_file', args: {}, riskLevel: 'low', verdict: 'auto_approved' });
+        chain.append({ sessionId: 'sess_wfail', toolName: 'write_file', args: {}, riskLevel: 'medium', verdict: 'approved_once' });
+
+        // Memory chain intact and valid, with the persistence gap exposed.
+        const res = chain.verify();
+        expect(res.valid).toBe(true);
+        expect(res.writeFailures).toBe(2);
+
+        const clean = new DshAuditChain();
+        clean.append({ sessionId: 's', toolName: 't', args: {}, riskLevel: 'low', verdict: 'auto_approved' });
+        expect(clean.verify().writeFailures).toBe(0);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
     });
   });
 
@@ -406,6 +663,43 @@ describe('DSH Bridge Contract Tests', () => {
         const undoRes = engine.undo();
         expect(undoRes.success).toBe(true);
         expect(fs.readFileSync(testFile, 'utf-8')).toBe('const initial = 1;');
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it('keeps checkpoint seq unique across sliding-window eviction and undoes by exact seq', () => {
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-cp-seq-'));
+      try {
+        const testFile = path.join(tempDir, 'evict.ts');
+
+        // maxCheckpoints=2 forces eviction after the 2nd snapshot.
+        const engine = new DshCheckpointEngine(tempDir, undefined, 2);
+
+        const contents = ['v0', 'v1', 'v2', 'v3'];
+        const seqs: number[] = [];
+        for (const content of contents) {
+          fs.writeFileSync(testFile, content, 'utf-8');
+          // Snapshot captures the current content BEFORE the next mutation.
+          seqs.push(engine.snapshot([testFile], `state ${content}`).seq);
+        }
+
+        // Old bug: seq derived from array length → [1,2,3,3] after eviction.
+        expect(seqs).toEqual([1, 2, 3, 4]);
+        expect(new Set(seqs).size).toBe(4);
+
+        // Window holds only cp3 (captures v2) and cp4 (captures v3).
+        // undo(3) must restore v2 (state before mutation 3) via exact seq match,
+        // not fall back onto a duplicate/wrong record.
+        const undoRes = engine.undo(3);
+        expect(undoRes.success).toBe(true);
+        expect(fs.readFileSync(testFile, 'utf-8')).toBe('v2');
+        expect(engine.getCheckpoints()).toHaveLength(0);
+
+        // Sequence continues monotonically after undo truncation (no seq reuse).
+        fs.writeFileSync(testFile, 'v9', 'utf-8');
+        const next = engine.snapshot([testFile], 'after undo');
+        expect(next.seq).toBe(5);
       } finally {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
@@ -485,6 +779,87 @@ describe('DSH Bridge Contract Tests', () => {
       const evalResult = DshRiskEvaluator.evaluate('read_file', { path: '/workspace/.env' });
       expect(evalResult.riskLevel).toBe('critical');
       expect(evalResult.requiresApproval).toBe(true);
+    });
+
+    it('matches built-in sensitive credential basenames case-insensitively', () => {
+      // macOS/Windows preserve case, so `.ENV` / `ID_RSA` must not bypass the guard.
+      const matcher = new DshIgnoreMatcher('/tmp');
+      expect(matcher.isIgnored('.ENV')).toBe(true);
+      expect(matcher.isIgnored('config/.Env.Local')).toBe(true);
+      expect(matcher.isIgnored('secrets/SERVER.KEY')).toBe(true);
+      expect(matcher.isSensitiveCredential('certs/CA.PEM')).toBe(true);
+      expect(matcher.isSensitiveCredential('~/.SSH/ID_RSA')).toBe(true);
+
+      // Shell argument scanning inherits the case-insensitive guard.
+      const evalUpper = DshRiskEvaluator.evaluate('run_command', { command: 'cat .ENV.PRODUCTION' });
+      expect(evalUpper.riskLevel).toBe('critical');
+      expect(evalUpper.requiresApproval).toBe(true);
+
+      // Only the credential rules fold case; ordinary literal matching stays exact.
+      expect(matcher.isIgnored('SRC/App.tsx'.toUpperCase())).toBe(false);
+    });
+
+    it('warns once per unsupported ignore-file pattern instead of failing silently', () => {
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-ignore-warn-'));
+      try {
+        fs.writeFileSync(
+          path.join(tempDir, '.gitignore'),
+          ['*.log', '!keep.log', 'logs/', '# just a comment', 'plain-name'].join('\n'),
+          'utf-8'
+        );
+
+        const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+        try {
+          new DshIgnoreMatcher(tempDir);
+          // Second construction with the same patterns must NOT re-warn.
+          new DshIgnoreMatcher(tempDir);
+
+          const warnedText = stderrSpy.mock.calls.map((c) => String(c[0])).join('');
+          expect(warnedText).toContain('*.log');
+          expect(warnedText).toContain('!keep.log');
+          expect(warnedText).toContain('logs/');
+          expect(warnedText).toContain('matched literally');
+
+          const countFor = (needle: string) =>
+            stderrSpy.mock.calls.filter((c) => String(c[0]).includes(needle)).length;
+          expect(countFor('*.log')).toBe(1);
+          expect(countFor('!keep.log')).toBe(1);
+          expect(countFor('logs/')).toBe(1);
+
+          // Literal patterns and comments are honored as-is and never warn.
+          expect(warnedText).not.toContain('plain-name');
+          expect(warnedText).not.toContain('# just a comment');
+        } finally {
+          stderrSpy.mockRestore();
+        }
+
+        // Literal entries still match by exact name/path equality.
+        const matcher = new DshIgnoreMatcher(tempDir);
+        expect(matcher.isIgnored('plain-name')).toBe(true);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it('scans shell command arguments for protected credentials before auto-approval', () => {
+      // 1. Credential paths inside command strings must escalate to approval
+      const evalRsa = DshRiskEvaluator.evaluate('run_command', { command: 'cat ~/.ssh/id_rsa' });
+      expect(evalRsa.riskLevel).toBe('critical');
+      expect(evalRsa.requiresApproval).toBe(true);
+      expect(evalRsa.reason).toContain('id_rsa');
+
+      const evalEnv = DshRiskEvaluator.evaluate('run_command', { command: 'cat .env.production' });
+      expect(evalEnv.riskLevel).toBe('critical');
+      expect(evalEnv.requiresApproval).toBe(true);
+
+      const evalPem = DshRiskEvaluator.evaluate('run_command', { command: "openssl verify './certs/server.pem'" });
+      expect(evalPem.riskLevel).toBe('critical');
+      expect(evalPem.requiresApproval).toBe(true);
+
+      // 2. Non-credential read-only commands remain auto-approved (no semantic drift)
+      const evalSafe = DshRiskEvaluator.evaluate('run_command', { command: 'cat src/index.ts' });
+      expect(evalSafe.riskLevel).toBe('low');
+      expect(evalSafe.requiresApproval).toBe(false);
     });
   });
 });

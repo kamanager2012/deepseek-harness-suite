@@ -7,20 +7,24 @@ export class ConfigStore {
   private configPath: string;
   private config: DshConfig;
 
-  constructor() {
-    const configDir = path.join(os.homedir(), '.config', 'dsh-desktop');
-    if (!fs.existsSync(configDir)) {
-      fs.mkdirSync(configDir, { recursive: true });
+  constructor(configDir?: string) {
+    const dir = configDir || path.join(os.homedir(), '.config', 'dsh-desktop');
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
     }
-    this.configPath = path.join(configDir, 'config.json');
+    this.configPath = path.join(dir, 'config.json');
     this.config = this.loadConfig();
   }
 
   private loadConfig(): DshConfig {
     try {
       if (fs.existsSync(this.configPath)) {
+        // Repair permissions of config files written by older versions,
+        // regardless of whether their content parses.
+        fs.chmodSync(this.configPath, 0o600);
         const raw = fs.readFileSync(this.configPath, 'utf-8');
-        return JSON.parse(raw);
+        const parsed = JSON.parse(raw) as DshConfig;
+        return parsed;
       }
     } catch {
       // ignore parse error and fallback
@@ -43,6 +47,8 @@ export class ConfigStore {
   public save(updates: Partial<DshConfig>): void {
     this.config = { ...this.config, ...updates };
     fs.writeFileSync(this.configPath, JSON.stringify(this.config, null, 2), 'utf-8');
+    // The config contains the API key: restrict to owner-only access.
+    fs.chmodSync(this.configPath, 0o600);
   }
 
   public isFirstRun(): boolean {

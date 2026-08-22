@@ -12,6 +12,13 @@ export class DshEventStream {
 
   constructor() {
     this.emitter.setMaxListeners(50);
+    // emitEvent() re-emits each event by its `type`. A normalized event typed
+    // 'error' then collides with the EventEmitter control channel and throws
+    // ERR_UNHANDLED_ERROR when nobody subscribed through the private emitter.
+    // The public surface (on()/onEvent()) only ever listens on the 'event'
+    // bus, so that typed channel can never gain subscribers — keep it inert
+    // instead of crashing the host process.
+    this.emitter.on('error', () => {});
   }
 
   /**
@@ -130,8 +137,14 @@ export class DshEventStream {
         const args = data.args || data.arguments || {};
         const explicitApproval = data.requiresApproval;
 
+        // Only trusted policy values are accepted from the wire; anything else
+        // (including 'unrestricted') falls back to the conservative auto_safe default.
+        const wirePolicy = data.approvalPolicy;
+        const approvalPolicy: 'auto_safe' | 'strict' =
+          wirePolicy === 'auto_safe' || wirePolicy === 'strict' ? wirePolicy : 'auto_safe';
+
         // Auto-approve safe read-only operations; require approval for destructive or high-risk tasks
-        const evaluation = DshRiskEvaluator.evaluate(name, args, explicitApproval, (data.approvalPolicy || 'auto_safe'));
+        const evaluation = DshRiskEvaluator.evaluate(name, args, explicitApproval, approvalPolicy);
         const riskLevel = data.riskLevel || evaluation.riskLevel;
         const requiresApproval = evaluation.requiresApproval;
 

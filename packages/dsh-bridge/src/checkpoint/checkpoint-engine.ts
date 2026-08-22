@@ -46,6 +46,8 @@ export class DshCheckpointEngine {
   private workspaceRoot: string;
   private baseDir: string;
   private maxCheckpoints: number;
+  /** Monotonically increasing sequence counter; never derived from array length (survives window eviction). */
+  private nextSeq: number = 1;
 
   constructor(workspaceRoot?: string, customBaseDir?: string, maxCheckpoints = 50) {
     this.workspaceRoot = path.resolve(workspaceRoot || process.cwd());
@@ -144,7 +146,7 @@ export class DshCheckpointEngine {
    * Snapshot one or more files before a tool mutates them
    */
   public snapshot(filePaths: string[], description: string): CheckpointRecord {
-    const seq = this.checkpoints.length + 1;
+    const seq = this.nextSeq++;
     const id = `cp_${Date.now()}_${seq}`;
     const snapshots: FileSnapshot[] = [];
 

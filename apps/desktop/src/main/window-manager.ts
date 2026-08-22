@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import * as fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { ConfigStore } from './config-store.js';
+import { sanitizeConfigUpdates, stripSecrets } from './config-sanitizer.js';
 import { type DshSubprocessManager, DshSharedSessionStore } from '@dsh-community/dsh-bridge';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -26,9 +27,9 @@ export class WindowManager {
   }
 
   private setupIpc(): void {
-    ipcMain.handle('get-config', () => this.configStore.get());
+    ipcMain.handle('get-config', () => stripSecrets(this.configStore.get()));
     ipcMain.handle('save-config', (_, updates) => {
-      this.configStore.save(updates);
+      this.configStore.save(sanitizeConfigUpdates(updates));
       this.runtimeManager.restart();
       this.loadDshWebUi();
       return true;

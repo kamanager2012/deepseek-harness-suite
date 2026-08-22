@@ -9,6 +9,9 @@ on:
     # Run daily at 02:00 UTC to check for upstream breaking changes
     - cron: '0 2 * * *'
 
+permissions:
+  contents: read
+
 jobs:
   contract-check:
     runs-on: ubuntu-latest

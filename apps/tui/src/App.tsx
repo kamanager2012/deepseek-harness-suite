@@ -117,7 +117,7 @@ export const App: React.FC<AppProps> = ({ controller }) => {
       const auditText = records.length === 0
         ? 'No tool executions or security decisions recorded yet in this session.'
         : `🛡️ Tamper-Evident Audit Chain (${records.length} records, Integrity: ${verifyResult.valid ? '✅ VERIFIED' : '❌ CORRUPTED'}):\n\n` +
-          records.slice(-5).map(r => `[#${r.seq} | ${new Date(r.timestamp).toISOString().slice(11, 19)}] ${r.toolName} -> ${r.verdict} (${r.riskLevel.toUpperCase()}) | SHA: ${r.hash.slice(0, 12)}...`).join('\n');
+          records.slice(-5).map(r => `[#${r.seq} | ${new Date(r.timestamp).toISOString().slice(11, 19)}] ${r.toolName} -> ${r.verdict ?? r.status ?? 'recorded'} (${r.riskLevel.toUpperCase()}) | SHA: ${r.hash.slice(0, 12)}...`).join('\n');
       
       controller.addSystemMessage(auditText);
       return;
