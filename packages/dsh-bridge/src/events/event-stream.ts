@@ -130,8 +130,14 @@ export class DshEventStream {
         const args = data.args || data.arguments || {};
         const explicitApproval = data.requiresApproval;
 
+        // Only trusted policy values are accepted from the wire; anything else
+        // (including 'unrestricted') falls back to the conservative auto_safe default.
+        const wirePolicy = data.approvalPolicy;
+        const approvalPolicy: 'auto_safe' | 'strict' =
+          wirePolicy === 'auto_safe' || wirePolicy === 'strict' ? wirePolicy : 'auto_safe';
+
         // Auto-approve safe read-only operations; require approval for destructive or high-risk tasks
-        const evaluation = DshRiskEvaluator.evaluate(name, args, explicitApproval, (data.approvalPolicy || 'auto_safe'));
+        const evaluation = DshRiskEvaluator.evaluate(name, args, explicitApproval, approvalPolicy);
         const riskLevel = data.riskLevel || evaluation.riskLevel;
         const requiresApproval = evaluation.requiresApproval;
 

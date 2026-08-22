@@ -61,21 +61,34 @@ export class DshIgnoreMatcher {
   }
 
   /**
-   * Check if a relative or absolute file path is protected/ignored
+   * Check if a path refers to a well-known credential/secret file by basename
+   * (.env variants, private keys, certificates such as id_rsa / *.pem / *.key).
+   *
+   * Used both by isIgnored() and by the risk evaluator to scan raw shell command
+   * arguments (which are not covered by structured args.path checks).
    */
-  public isIgnored(targetPath: string): boolean {
-    const normalized = targetPath.replace(/\\/g, '/');
-    const baseName = path.basename(normalized);
+  public isSensitiveCredential(targetPath: string): boolean {
+    const baseName = path.basename(targetPath.replace(/\\/g, '/'));
 
-    // Check sensitive file exact names
-    if (
+    return (
       baseName === '.env' ||
       baseName.startsWith('.env.') ||
       baseName.endsWith('.pem') ||
       baseName.endsWith('.key') ||
       baseName === 'id_rsa' ||
       baseName === 'id_ed25519'
-    ) {
+    );
+  }
+
+  /**
+   * Check if a relative or absolute file path is protected/ignored
+   */
+  public isIgnored(targetPath: string): boolean {
+    const normalized = targetPath.replace(/\\/g, '/');
+    const baseName = path.basename(normalized);
+
+    // Check sensitive credential file exact names
+    if (this.isSensitiveCredential(normalized)) {
       return true;
     }
 
