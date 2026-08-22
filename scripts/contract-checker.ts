@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -33,11 +33,12 @@ export function probeOfficialDsh(targetVersion = '0.1.0-rc.6'): UpstreamSnapshot
 
   // 1. Primary Attempt: Probe web profile plugins via dump-default-config
   try {
-    const rawDump = execSync(
-      `npx -y @deepseek-ai/dsh@${targetVersion} --profile web --dump-default-config`,
-      { 
-        encoding: 'utf-8', 
-        timeout: 45000, 
+    const rawDump = execFileSync(
+      'npx',
+      ['-y', `@deepseek-ai/dsh@${targetVersion}`, '--profile', 'web', '--dump-default-config'],
+      {
+        encoding: 'utf-8',
+        timeout: 45000,
         stdio: ['ignore', 'pipe', 'pipe'],
         env: { ...process.env, DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY || 'dummy_key_for_probe' }
       }
@@ -52,8 +53,9 @@ export function probeOfficialDsh(targetVersion = '0.1.0-rc.6'): UpstreamSnapshot
 
   // 2. Probe CLI surfaces
   try {
-    const webHelp = execSync(
-      `npx -y @deepseek-ai/dsh@${targetVersion} web --help`,
+    const webHelp = execFileSync(
+      'npx',
+      ['-y', `@deepseek-ai/dsh@${targetVersion}`, 'web', '--help'],
       { encoding: 'utf-8', timeout: 20000, stdio: ['ignore', 'pipe', 'pipe'] }
     );
     const flagMatches = webHelp.matchAll(/--[a-zA-Z0-9-]+/g);
@@ -65,8 +67,9 @@ export function probeOfficialDsh(targetVersion = '0.1.0-rc.6'): UpstreamSnapshot
   }
 
   try {
-    const headlessHelp = execSync(
-      `npx -y @deepseek-ai/dsh@${targetVersion} --profile headless --help`,
+    const headlessHelp = execFileSync(
+      'npx',
+      ['-y', `@deepseek-ai/dsh@${targetVersion}`, '--profile', 'headless', '--help'],
       { encoding: 'utf-8', timeout: 20000, stdio: ['ignore', 'pipe', 'pipe'] }
     );
     const flagMatches = headlessHelp.matchAll(/--[a-zA-Z0-9-]+/g);
@@ -110,13 +113,30 @@ export function probeOfficialDsh(targetVersion = '0.1.0-rc.6'): UpstreamSnapshot
   };
 }
 
-export function runContractDiff(candidateSnapshot?: UpstreamSnapshot): boolean {
+export interface ContractCheckOptions {
+  /** Explicitly accept offline snapshot fallback (weakens verification guarantees). */
+  allowOffline?: boolean;
+}
+
+export function runContractDiff(
+  candidateSnapshot?: UpstreamSnapshot,
+  options: ContractCheckOptions = {}
+): boolean {
   console.log(`\n======================================================`);
   console.log(`🔍 Dynamic Runtime Invariant Probe & Verification`);
   console.log(`======================================================\n`);
 
   // If candidate is not passed in, actively PROBE upstream!
   const target = candidateSnapshot || probeOfficialDsh('0.1.0-rc.6');
+
+  // Fail closed: never validate invariants against fabricated observations
+  // unless the operator explicitly opted in via --allow-offline.
+  if (target.probeSource === 'offline_snapshot' && !options.allowOffline) {
+    console.error(`❌ [FAIL-CLOSED] Live upstream probe unavailable — offline fallback snapshot was used.`);
+    console.error(`   Refusing to PASS runtime invariants based on fabricated observations.`);
+    console.error(`   Re-run with network access, or pass --allow-offline to explicitly accept snapshot-based verification.`);
+    return false;
+  }
 
   console.log(`📌 Candidate Version: ${target.version}`);
   console.log(`🔎 Probe Mode: ${target.probeSource === 'live_exec' ? '⚡ Live Introspection' : '📦 Verified Snapshot'}`);
@@ -157,6 +177,7 @@ export function runContractDiff(candidateSnapshot?: UpstreamSnapshot): boolean {
 
 // Direct execution
 if (process.argv[1] === __filename) {
-  const ok = runContractDiff();
+  const allowOffline = process.argv.includes('--allow-offline');
+  const ok = runContractDiff(undefined, { allowOffline });
   if (!ok) process.exit(1);
 }

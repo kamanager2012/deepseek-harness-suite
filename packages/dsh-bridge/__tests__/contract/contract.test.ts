@@ -431,6 +431,124 @@ describe('DSH Bridge Contract Tests', () => {
       const verification = chain.verify();
       expect(verification.valid).toBe(true);
     });
+
+    it('persists to disk and loadAndVerify resumes the chain from the file tail', () => {
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-audit-disk-'));
+      try {
+        // Writer chain persists every record.
+        const writer = new DshAuditChain(tempDir, 'sess_disk');
+        const r1 = writer.append({
+          sessionId: 'sess_disk',
+          toolName: 'read_file',
+          args: { path: '/tmp/a.ts' },
+          riskLevel: 'low',
+          verdict: 'auto_approved',
+          durationMs: 12,
+          status: 'success',
+        });
+        const r2 = writer.append({
+          sessionId: 'sess_disk',
+          toolName: 'run_command',
+          args: { command: 'git status' },
+          riskLevel: 'low',
+          verdict: 'auto_approved',
+          durationMs: 340,
+          status: 'failed',
+        });
+
+        const logPath = path.join(tempDir, 'sess_disk.audit.jsonl');
+        expect(fs.existsSync(logPath)).toBe(true);
+
+        // Fresh process: load the persisted log back and verify every link
+        // (durationMs/status are now part of the hashed content).
+        const loader = new DshAuditChain();
+        const loadRes = loader.loadAndVerify(logPath);
+        expect(loadRes.valid).toBe(true);
+        expect(loadRes.loaded).toBe(2);
+
+        // In-memory chain continues seamlessly from the file tail.
+        const r3 = loader.append({
+          sessionId: 'sess_disk',
+          toolName: 'write_file',
+          args: { path: '/tmp/b.ts' },
+          riskLevel: 'medium',
+          verdict: 'approved_once',
+          status: 'success',
+        });
+        expect(r3.seq).toBe(3);
+        expect(r3.prevHash).toBe(r2.hash);
+
+        // The continuation must also persist and re-verify from scratch.
+        const reloader = new DshAuditChain();
+        expect(reloader.loadAndVerify(logPath)).toEqual({ valid: true, loaded: 3 });
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it('throws when a persisted audit log line has been tampered with', () => {
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-audit-tamper-'));
+      try {
+        const writer = new DshAuditChain(tempDir, 'sess_evil');
+        writer.append({
+          sessionId: 'sess_evil',
+          toolName: 'read_file',
+          args: { path: '/tmp/innocent.ts' },
+          riskLevel: 'low',
+          verdict: 'auto_approved',
+        });
+        writer.append({
+          sessionId: 'sess_evil',
+          toolName: 'read_file',
+          args: { path: '/workspace/.env' },
+          riskLevel: 'critical',
+          verdict: 'rejected',
+        });
+
+        const logPath = path.join(tempDir, 'sess_evil.audit.jsonl');
+
+        // Hand-edit the middle record: swap a rejected credential read into an approved one.
+        const lines = fs.readFileSync(logPath, 'utf-8').split('\n').filter((l) => l.trim());
+        const rec = JSON.parse(lines[1]);
+        rec.verdict = 'auto_approved';
+        rec.riskLevel = 'low';
+        lines[1] = JSON.stringify(rec);
+        fs.writeFileSync(logPath, lines.join('\n') + '\n', 'utf-8');
+
+        expect(() => new DshAuditChain().loadAndVerify(logPath)).toThrow(/content hash mismatch/);
+
+        // Also reject raw corruption (invalid JSON line).
+        fs.writeFileSync(logPath, lines[0] + '\n{not json\n', 'utf-8');
+        expect(() => new DshAuditChain().loadAndVerify(logPath)).toThrow(/invalid JSON/);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it('counts disk persistence failures instead of silently dropping them', () => {
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-audit-wfail-'));
+      try {
+        // Point the audit dir at a regular FILE: appendFileSync can never succeed,
+        // but records stay in memory (old behavior swallowed this entirely).
+        const blockingFile = path.join(tempDir, 'not-a-dir');
+        fs.writeFileSync(blockingFile, 'occupied', 'utf-8');
+        const chain = new DshAuditChain(blockingFile, 'sess_wfail');
+
+        chain.append({ sessionId: 'sess_wfail', toolName: 'read_file', args: {}, riskLevel: 'low', verdict: 'auto_approved' });
+        chain.append({ sessionId: 'sess_wfail', toolName: 'write_file', args: {}, riskLevel: 'medium', verdict: 'approved_once' });
+
+        // Memory chain intact and valid, with the persistence gap exposed.
+        const res = chain.verify();
+        expect(res.valid).toBe(true);
+        expect(res.writeFailures).toBe(2);
+
+        const clean = new DshAuditChain();
+        clean.append({ sessionId: 's', toolName: 't', args: {}, riskLevel: 'low', verdict: 'auto_approved' });
+        expect(clean.verify().writeFailures).toBe(0);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
   });
 
   describe('Five-Layer Environment Doctor', () => {
@@ -497,6 +615,43 @@ describe('DSH Bridge Contract Tests', () => {
         const undoRes = engine.undo();
         expect(undoRes.success).toBe(true);
         expect(fs.readFileSync(testFile, 'utf-8')).toBe('const initial = 1;');
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it('keeps checkpoint seq unique across sliding-window eviction and undoes by exact seq', () => {
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-cp-seq-'));
+      try {
+        const testFile = path.join(tempDir, 'evict.ts');
+
+        // maxCheckpoints=2 forces eviction after the 2nd snapshot.
+        const engine = new DshCheckpointEngine(tempDir, undefined, 2);
+
+        const contents = ['v0', 'v1', 'v2', 'v3'];
+        const seqs: number[] = [];
+        for (const content of contents) {
+          fs.writeFileSync(testFile, content, 'utf-8');
+          // Snapshot captures the current content BEFORE the next mutation.
+          seqs.push(engine.snapshot([testFile], `state ${content}`).seq);
+        }
+
+        // Old bug: seq derived from array length → [1,2,3,3] after eviction.
+        expect(seqs).toEqual([1, 2, 3, 4]);
+        expect(new Set(seqs).size).toBe(4);
+
+        // Window holds only cp3 (captures v2) and cp4 (captures v3).
+        // undo(3) must restore v2 (state before mutation 3) via exact seq match,
+        // not fall back onto a duplicate/wrong record.
+        const undoRes = engine.undo(3);
+        expect(undoRes.success).toBe(true);
+        expect(fs.readFileSync(testFile, 'utf-8')).toBe('v2');
+        expect(engine.getCheckpoints()).toHaveLength(0);
+
+        // Sequence continues monotonically after undo truncation (no seq reuse).
+        fs.writeFileSync(testFile, 'v9', 'utf-8');
+        const next = engine.snapshot([testFile], 'after undo');
+        expect(next.seq).toBe(5);
       } finally {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
