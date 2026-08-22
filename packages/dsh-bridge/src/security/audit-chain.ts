@@ -11,7 +11,11 @@ export interface AuditRecordPayload {
   toolName: string;
   args: Record<string, unknown>;
   riskLevel: RiskLevel;
-  verdict: 'auto_approved' | 'approved_once' | 'approved_always' | 'rejected';
+  /**
+   * Authorization outcome for approval records. Omitted on pure lifecycle
+   * records (tool invocation start/end) where no decision has been made yet.
+   */
+  verdict?: 'auto_approved' | 'approved_once' | 'approved_always' | 'rejected';
   reason?: string;
   durationMs?: number;
   status?: 'success' | 'failed' | 'pending';

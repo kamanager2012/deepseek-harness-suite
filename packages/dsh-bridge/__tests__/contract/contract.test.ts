@@ -17,6 +17,11 @@ import { DshIgnoreMatcher } from '../../src/security/dsh-ignore.js';
 import { DshRiskEvaluator } from '../../src/security/risk-evaluator.js';
 import type { DshEvent } from '../../src/types/index.js';
 
+// Controller-managed audit chains must stay out of the real user home during
+// tests; point the suite audit dir at an isolated temp location before any
+// DshAgentController is constructed.
+process.env.DSH_SUITE_AUDIT_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-contract-audit-'));
+
 describe('DSH Bridge Contract Tests', () => {
   describe('Event Normalization & Projection', () => {
     it('normalizes streaming reasoning/thought events correctly', () => {

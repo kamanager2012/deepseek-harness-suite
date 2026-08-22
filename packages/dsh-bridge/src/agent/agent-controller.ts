@@ -1,9 +1,15 @@
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import type { 
   DshSession, 
   DshMessage, 
   DshApprovalDecision, 
   DshConfig,
-  DshAgentStatus 
+  DshAgentStatus,
+  DshEvent,
+  DshToolCall,
+  RiskLevel
 } from '../types/index.js';
 import { DshEventStream } from '../events/event-stream.js';
 import { DshSharedSessionStore } from '../session/session-store.js';
@@ -19,8 +25,18 @@ export interface AgentControllerOptions {
   config: DshConfig;
   events?: DshEventStream;
   auditChain?: DshAuditChain;
+  /** Override the suite audit directory (defaults to $DSH_SUITE_AUDIT_DIR or ~/.dsh/suite_audit). */
+  auditDir?: string;
   checkpoints?: DshCheckpointEngine;
   runtimeClient?: DshRuntimeClient;
+}
+
+/** Correlates a tool invocation's start record with its terminal record. */
+interface TrackedToolInvocation {
+  toolName: string;
+  args: Record<string, unknown>;
+  riskLevel: RiskLevel;
+  startedAt: number;
 }
 
 /**
@@ -30,8 +46,15 @@ export interface AgentControllerOptions {
  * managing session forks/rollbacks, and controlling the agent loop.
  */
 export class DshAgentController {
+  private static readonly MAX_TRACKED_TOOL_CALLS = 512;
+
   public readonly events: DshEventStream;
-  public readonly auditChain: DshAuditChain;
+  /**
+   * Mutable by design: when the controller owns its chain (no injected one),
+   * it is rebound whenever the active session identity changes (load/fork) so
+   * records always live in the log file named after the session they describe.
+   */
+  public auditChain: DshAuditChain;
   public readonly checkpoints: DshCheckpointEngine;
   public readonly runtimeClient: DshRuntimeClient;
   private pluginClient = new DshPluginCatalogClient();
@@ -39,15 +62,30 @@ export class DshAgentController {
   private currentSession: DshSession | null = null;
   private currentStatus: DshAgentStatus = 'idle';
   private pendingApprovals = new Map<string, (decision: DshApprovalDecision) => void>();
+  /** True when the chain was auto-created here (injected chains are never rebound). */
+  private ownsAuditChain: boolean;
+  private readonly auditDir?: string;
+  /** Tool invocations observed but not yet finished, keyed by call id. */
+  private trackedToolCalls = new Map<string, TrackedToolInvocation>();
 
   constructor(options: AgentControllerOptions) {
     this.config = options.config;
+    this.auditDir = options.auditDir;
+    this.ownsAuditChain = !options.auditChain;
     this.events = options.events || new DshEventStream();
-    this.auditChain = options.auditChain || new DshAuditChain();
     this.checkpoints = options.checkpoints || new DshCheckpointEngine(this.config.workspacePath);
     this.runtimeClient = options.runtimeClient || new DshRuntimeClient();
 
+    // Session identity first: the default audit chain persists under
+    // suite_audit/<sessionId>.audit.jsonl and resumes an existing log instead
+    // of rewriting it from seq=1.
     this.initSession();
+    if (options.auditChain) {
+      this.auditChain = options.auditChain;
+    } else {
+      this.auditChain = this.attachSessionAuditChain(this.getSession().id);
+    }
+
     this.setupInternalListeners();
   }
 
@@ -87,6 +125,106 @@ export class DshAgentController {
           session: this.currentSession,
         });
       }
+    });
+
+    // Tool execution audit trail: normalized tool lifecycle events emitted by
+    // the runtime transport (SDK notifications or upstream projection) are
+    // mirrored into the tamper-evident chain. Auditing is a side channel —
+    // risk gating stays in DshRiskEvaluator, persistence failures never
+    // propagate into the execution path.
+    this.events.on('tool:requested', (event) => {
+      this.recordToolInvocationStart(event.toolCall);
+    });
+    this.events.on('tool:finished', (event) => {
+      this.recordToolInvocationFinish(event);
+    });
+  }
+
+  /**
+   * Suite-owned audit persistence following the same ~/.dsh isolation
+   * convention as ~/.dsh/suite_sessions: one JSONL chain log per session under
+   * ~/.dsh/suite_audit. An existing log is resumed via loadAndVerify so
+   * restarts continue the chain instead of rewriting from seq=1. A corrupted
+   * log is quarantined (renamed aside, never deleted) to preserve forensic
+   * evidence while keeping future records verifiable; startup never fails
+   * because of auditing.
+   */
+  private attachSessionAuditChain(sessionId: string): DshAuditChain {
+    const dir = this.auditDir || process.env.DSH_SUITE_AUDIT_DIR || path.join(os.homedir(), '.dsh', 'suite_audit');
+    const chain = new DshAuditChain(dir, sessionId);
+    const logPath = path.join(dir, `${sessionId}.audit.jsonl`);
+
+    if (fs.existsSync(logPath)) {
+      try {
+        chain.loadAndVerify(logPath);
+      } catch {
+        try {
+          fs.renameSync(logPath, `${logPath}.corrupt-${Date.now()}`);
+        } catch {
+          // Hostile disk: fall back to memory-only auditing rather than blocking.
+        }
+      }
+    }
+
+    return chain;
+  }
+
+  /** Append to the audit chain without ever disturbing the execution pipeline. */
+  private safeAuditAppend(payload: Parameters<DshAuditChain['append']>[0]): void {
+    try {
+      this.auditChain.append(payload);
+    } catch {
+      // Observational side channel only; disk-level gaps are already counted
+      // in DshAuditChain.writeFailures and surfaced via verify().
+    }
+  }
+
+  private recordToolInvocationStart(call: DshToolCall): void {
+    const startedAt = call.startedAt ?? Date.now();
+    this.trackedToolCalls.set(call.id, {
+      toolName: call.name,
+      args: call.args ?? {},
+      riskLevel: call.riskLevel,
+      startedAt,
+    });
+
+    // Bound the correlation table: results that never arrive (runtime crash
+    // mid-call) must not grow it without limit. Map preserves insertion
+    // order, so eviction is FIFO.
+    if (this.trackedToolCalls.size > DshAgentController.MAX_TRACKED_TOOL_CALLS) {
+      const oldest = this.trackedToolCalls.keys().next().value;
+      if (oldest !== undefined) {
+        this.trackedToolCalls.delete(oldest);
+      }
+    }
+
+    this.safeAuditAppend({
+      sessionId: this.getSession().id,
+      toolName: call.name,
+      args: call.args ?? {},
+      riskLevel: call.riskLevel,
+      // No approval decision has happened at this point; the terminal record
+      // closes this invocation (approval verdicts are recorded separately).
+      status: 'pending',
+      reason: `tool invocation ${call.id} started`,
+    });
+  }
+
+  private recordToolInvocationFinish(event: Extract<DshEvent, { type: 'tool:finished' }>): void {
+    const tracked = this.trackedToolCalls.get(event.toolCallId);
+    this.trackedToolCalls.delete(event.toolCallId);
+
+    const completedAt = Date.now();
+    this.safeAuditAppend({
+      sessionId: this.getSession().id,
+      toolName: tracked?.toolName ?? 'unknown_tool',
+      args: tracked?.args ?? {},
+      riskLevel: tracked?.riskLevel ?? 'medium',
+      status: event.status === 'failed' ? 'failed' : 'success',
+      durationMs: tracked ? Math.max(0, completedAt - tracked.startedAt) : undefined,
+      reason: tracked
+        ? `tool invocation ${event.toolCallId} finished`
+        : `tool completion observed without a tracked start (${event.toolCallId})`,
     });
   }
 
@@ -263,6 +401,9 @@ export class DshAgentController {
     });
 
     this.currentSession = newSession;
+    if (this.ownsAuditChain) {
+      this.auditChain = this.attachSessionAuditChain(newSession.id);
+    }
     this.events.emitEvent({
       type: 'session:updated',
       session: newSession,
@@ -276,6 +417,11 @@ export class DshAgentController {
    */
   public loadSession(session: DshSession): void {
     this.currentSession = session;
+    if (this.ownsAuditChain) {
+      // Resume (or start) the audit log of the session being loaded so
+      // appended records live in the file named after this session id.
+      this.auditChain = this.attachSessionAuditChain(session.id);
+    }
     this.events.emitEvent({
       type: 'session:updated',
       session: this.currentSession,
