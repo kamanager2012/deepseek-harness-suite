@@ -110,24 +110,63 @@ describe('Reality Gate & Runtime Transport Verification Suite', () => {
   });
 
   describe('Pre-enqueue vs Post-enqueue Replay Hazard Defense', () => {
-    it('safely rejects active replay when failure occurs post-enqueue', async () => {
-      const client = new DshRuntimeClient();
-      const stream = new DshEventStream();
+    it('blocks headless fallback when the runtime dies after the enqueue receipt was observed', async () => {
+      const tempScriptDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-replay-hazard-'));
+      const scriptPath = path.join(tempScriptDir, 'mock-dying-agent.mjs');
 
-      // Mock an error during active turn execution
-      const mockFailingTurn = async () => {
-        return client.executeTurn({
-          prompt: 'Create database migration',
-          config: {
-            workspacePath: process.cwd(),
-            // invalid version to trigger error
-            runtimeVersion: '0.0.0-invalid',
-          },
-          events: stream,
-        });
-      };
+      // Handshake succeeds, the prompt is durably enqueued (agent/inbox/spliced
+      // receipt echoes the client's messageId), then the runtime exits MID-TURN
+      // without ever settling the session.
+      const runtimeCode = `
+import readline from 'node:readline';
 
-      await expect(mockFailingTurn()).rejects.toThrow();
+const rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: false });
+
+rl.on('line', (line) => {
+  if (!line.trim()) return;
+  try {
+    const req = JSON.parse(line);
+    if (req.method === 'initialize') {
+      process.stdout.write(JSON.stringify({
+        jsonrpc: '2.0', id: req.id,
+        result: { serverInfo: { name: 'mock-dying-agent', version: '0.0.0' } },
+      }) + '\\n');
+    } else if (req.method === 'session/prompt') {
+      const sessId = req.params?.sessionId || 'sess_default';
+      process.stdout.write(JSON.stringify({
+        jsonrpc: '2.0', id: req.id, result: { messageId: 'msg_replay_1' },
+      }) + '\\n');
+      process.stdout.write(JSON.stringify({
+        jsonrpc: '2.0', method: 'session.event',
+        params: { sessionId: sessId, event: { type: 'agent/inbox/spliced', seq: 1, time: Date.now(), data: { inserted: [{ id: 'msg_replay_1' }] } } },
+      }) + '\\n');
+      setTimeout(() => process.exit(9), 30);
+    }
+  } catch { /* ignore malformed frames */ }
+});
+`;
+      fs.writeFileSync(scriptPath, runtimeCode, 'utf-8');
+
+      try {
+        const client = new DshRuntimeClient();
+        const stream = new DshEventStream();
+
+        // Fallback stays ENABLED: the assertion proves the replay guard — not
+        // disableFallback — is what blocks the duplicate execution.
+        await expect(
+          client.executeTurn({
+            prompt: 'Create database migration',
+            config: {
+              workspacePath: process.cwd(),
+              runtimeExecutable: process.execPath,
+              runtimeExecutableArgs: [scriptPath],
+            },
+            events: stream,
+          })
+        ).rejects.toThrow(/duplicate mutation side-effects/);
+      } finally {
+        fs.rmSync(tempScriptDir, { recursive: true, force: true });
+      }
     });
   });
 

@@ -24,5 +24,5 @@ We take the security of DeepSeek Harness Suite seriously. If you discover a secu
 
 * **Official Source Ownership = 0**: Zero vendored upstream code.
 * **Process Isolation**: All child processes must be cleaned up on SIGINT/SIGTERM.
-* **Sensitive File Defense**: `.dshignore` automatically flags access to `.env`, private keys (`*.pem`, `*.key`, `id_rsa`), and credentials.
+* **Sensitive File Defense**: `.dshignore` automatically flags access to `.env`, private keys (`*.pem`, `*.key`, `id_rsa`), and credentials. Built-in sensitive rules compare case-insensitively; custom patterns are matched literally (no glob/negation support — unsupported syntax warns once on stderr).
 * **Tamper-Evident Audit**: SHA-256 hash chains cryptographically record tool executions.

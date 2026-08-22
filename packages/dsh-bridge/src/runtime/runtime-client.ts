@@ -43,7 +43,20 @@ export class DshRuntimeClient {
   public async executeTurn(options: RuntimeExecutionOptions): Promise<RuntimeExecutionResult> {
     const { prompt, config, events, sessionId, signal } = options;
 
+    // Replay-hazard latch for the SDK path: flipped ONLY once a successful side
+    // effect is confirmed. The official SDK forwards onNotification exclusively
+    // after observing the durable inbox receipt (agent/inbox/spliced) for THIS
+    // prompt's message id, so the first callback invocation proves the runtime
+    // durably enqueued the turn. Failures before that (boot/handshake/prompt
+    // dispatch) have produced no side effects and may safely fall back to
+    // headless execution; failures after it must never be replayed. Residual
+    // gap: enqueue succeeded but the receipt frame itself was lost on stdio
+    // before any callback fired — accepted as narrower than blocking every
+    // startup failure behind the replay guard.
     let isPromptEnqueuedOrActive = false;
+    // Abort handler for the SDK path; unregistered in the finally block below
+    // so the caller's signal does not accumulate listeners turn after turn.
+    let onAbort: (() => void) | undefined;
 
     events.emitEvent({
       type: 'agent:status',
@@ -73,20 +86,18 @@ export class DshRuntimeClient {
       this.activeHarness = harness;
 
       if (signal) {
-        signal.addEventListener('abort', () => {
-          this.interrupt();
-        });
+        onAbort = () => this.interrupt();
+        signal.addEventListener('abort', onAbort);
       }
 
       let accumulatedContent = '';
       let accumulatedReasoning = '';
       const toolCalls: DshToolCall[] = [];
 
-      isPromptEnqueuedOrActive = true;
-
       const result: RunResult = await harness.run(prompt, {
         sessionId,
         onNotification: (notif: HarnessNotification) => {
+          isPromptEnqueuedOrActive = true;
           // Normalize official SessionEvent envelope from JSON-RPC wire
           if (notif.method === 'session.event' || notif.method === 'session/event') {
             const ev = (notif.params?.event || notif.params) as any;
@@ -235,6 +246,9 @@ export class DshRuntimeClient {
 
       return this.executeHeadlessFallback(options);
     } finally {
+      if (signal && onAbort) {
+        signal.removeEventListener('abort', onAbort);
+      }
       if (this.activeHarness) {
         try {
           await this.activeHarness.close();
@@ -255,7 +269,10 @@ export class DshRuntimeClient {
     return new Promise<RuntimeExecutionResult>((resolve, reject) => {
       let accumulatedContent = '';
 
-      const child = spawn('npx', ['-y', `@deepseek-ai/dsh@${config.runtimeVersion || '0.1.0-rc.6'}`, '--profile', 'headless', prompt], {
+      // '--' guards against the prompt being parsed as downstream CLI flags
+      // when it begins with '-'. (Prompt visibility in `ps` and ARG_MAX limits
+      // are accepted trade-offs of argv transport.)
+      const child = spawn('npx', ['-y', `@deepseek-ai/dsh@${config.runtimeVersion || '0.1.0-rc.6'}`, '--profile', 'headless', '--', prompt], {
         cwd: config.workspacePath || process.cwd(),
         env: {
           ...process.env,
@@ -266,11 +283,19 @@ export class DshRuntimeClient {
 
       this.fallbackProcess = child;
 
+      // Abort wiring: unregistered on close/error so the signal does not keep
+      // this turn's handler alive after the fallback process is gone.
+      const onAbort = () => {
+        child.kill('SIGTERM');
+      };
       if (signal) {
-        signal.addEventListener('abort', () => {
-          child.kill('SIGTERM');
-        });
+        signal.addEventListener('abort', onAbort);
       }
+      const detachAbortListener = () => {
+        if (signal) {
+          signal.removeEventListener('abort', onAbort);
+        }
+      };
 
       child.stdout.on('data', (data: Buffer) => {
         const text = data.toString('utf-8');
@@ -283,6 +308,7 @@ export class DshRuntimeClient {
       });
 
       child.on('error', (err) => {
+        detachAbortListener();
         events.emitEvent({
           type: 'agent:status',
           status: 'error',
@@ -292,6 +318,7 @@ export class DshRuntimeClient {
       });
 
       child.on('close', (code, signal) => {
+        detachAbortListener();
         this.fallbackProcess = null;
 
         // Check both non-zero exit code and signal termination

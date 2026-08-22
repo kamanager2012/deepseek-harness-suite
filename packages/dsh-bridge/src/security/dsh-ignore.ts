@@ -25,9 +25,15 @@ export const DEFAULT_IGNORED_PATTERNS = [
 
 /**
  * DSH Ignore & Sensitive Path Defense Engine
- * 
+ *
  * Prevents AI tools from inadvertently reading, modifying, or deleting
  * private credentials (.env, keys) or scanning giant trees (node_modules, .git).
+ *
+ * Custom `.dshignore` / `.gitignore` entries are matched literally (exact
+ * name/path equality). Glob wildcards, trailing-slash directory rules, and
+ * `!` negations from ignore files are NOT interpreted; each such line warns
+ * once on stderr so mismatches are never silent. Built-in sensitive rules
+ * (.env variants, *.pem, *.key, id_rsa, id_ed25519) compare case-insensitively.
  */
 export class DshIgnoreMatcher {
   private patterns: Set<string>;
@@ -37,6 +43,28 @@ export class DshIgnoreMatcher {
     this.workspacePath = workspacePath;
     this.patterns = new Set(DEFAULT_IGNORED_PATTERNS);
     this.loadCustomIgnoreFiles();
+  }
+
+  /**
+   * Pattern shapes the literal matcher cannot honor (glob wildcard, negation,
+   * directory-suffix semantics). Deduplicated per process so frequent matcher
+   * construction does not spam stderr.
+   */
+  private static warnedPatterns = new Set<string>();
+
+  private warnUnsupportedPatternSyntax(line: string, file: string): void {
+    const unsupported =
+      line.includes('*') || line.startsWith('!') || line.endsWith('/');
+    if (!unsupported) return;
+
+    const signature = `${file}:${line}`;
+    if (DshIgnoreMatcher.warnedPatterns.has(signature)) return;
+    DshIgnoreMatcher.warnedPatterns.add(signature);
+
+    process.stderr.write(
+      `[dsh-ignore] pattern "${line}" in ${file} uses unsupported syntax ` +
+      `(wildcard/negation/directory suffix); it is matched literally and may not behave like git.\n`
+    );
   }
 
   private loadCustomIgnoreFiles(): void {
@@ -52,6 +80,7 @@ export class DshIgnoreMatcher {
             .filter((l) => l && !l.startsWith('#'));
           for (const line of lines) {
             this.patterns.add(line);
+            this.warnUnsupportedPatternSyntax(line, file);
           }
         } catch {
           // Ignore read errors
@@ -63,12 +92,14 @@ export class DshIgnoreMatcher {
   /**
    * Check if a path refers to a well-known credential/secret file by basename
    * (.env variants, private keys, certificates such as id_rsa / *.pem / *.key).
+   * Comparisons are case-insensitive so `.ENV`, `SERVER.PEM` or `ID_RSA`
+   * cannot bypass the guard on case-preserving filesystems (macOS/Windows).
    *
    * Used both by isIgnored() and by the risk evaluator to scan raw shell command
    * arguments (which are not covered by structured args.path checks).
    */
   public isSensitiveCredential(targetPath: string): boolean {
-    const baseName = path.basename(targetPath.replace(/\\/g, '/'));
+    const baseName = path.basename(targetPath.replace(/\\/g, '/')).toLowerCase();
 
     return (
       baseName === '.env' ||

@@ -150,6 +150,20 @@ describe('DSH Bridge Contract Tests', () => {
       }
     });
 
+    it('requires approval for test-runner execution because test files run arbitrary code', () => {
+      // vitest/jest execute whatever lives in config files, setupFiles, and the
+      // tests themselves — they must not ride the read-only auto-approve list.
+      for (const cmd of [
+        'vitest run',
+        'vitest run src/security',
+        'vitest run --config ./evil.config.ts',
+      ]) {
+        const evaluation = DshRiskEvaluator.evaluate('run_command', { command: cmd });
+        expect(evaluation.riskLevel).toBe('high');
+        expect(evaluation.requiresApproval).toBe(true);
+      }
+    });
+
     it('normalizes TPS and token usage metrics', () => {
       const stream = new DshEventStream();
       let capturedMetrics: any = null;
@@ -240,6 +254,35 @@ describe('DSH Bridge Contract Tests', () => {
       const port = await manager.findAvailablePort(45000);
       expect(port).toBeGreaterThanOrEqual(45000);
       expect(typeof port).toBe('number');
+    });
+
+    it('stops the health poll when the subprocess errors without exiting', async () => {
+      // A spawn failure (ENOENT) emits 'error' with no matching 'exit'; the
+      // supervisor must tear down its 2s health interval instead of spinning.
+      const setIntervalSpy = vi.spyOn(global, 'setInterval');
+      const clearIntervalSpy = vi.spyOn(global, 'clearInterval');
+      const manager = new DshSubprocessManager({
+        config: {},
+        customExecutable: 'dsh-definitely-missing-binary',
+        customArgs: [],
+      });
+
+      try {
+        await manager.start();
+        const startedTimer = setIntervalSpy.mock.results.at(-1)?.value;
+        expect(startedTimer).toBeDefined();
+
+        // Give the spawn 'error' event time to fire.
+        await new Promise((resolve) => setTimeout(resolve, 50));
+
+        expect(manager.getHealth().running).toBe(false);
+        expect(clearIntervalSpy).toHaveBeenCalledWith(startedTimer);
+        expect((manager as any).healthCheckTimer).toBeNull();
+      } finally {
+        setIntervalSpy.mockRestore();
+        clearIntervalSpy.mockRestore();
+        await manager.stop();
+      }
     });
   });
 
@@ -731,6 +774,66 @@ describe('DSH Bridge Contract Tests', () => {
       const evalResult = DshRiskEvaluator.evaluate('read_file', { path: '/workspace/.env' });
       expect(evalResult.riskLevel).toBe('critical');
       expect(evalResult.requiresApproval).toBe(true);
+    });
+
+    it('matches built-in sensitive credential basenames case-insensitively', () => {
+      // macOS/Windows preserve case, so `.ENV` / `ID_RSA` must not bypass the guard.
+      const matcher = new DshIgnoreMatcher('/tmp');
+      expect(matcher.isIgnored('.ENV')).toBe(true);
+      expect(matcher.isIgnored('config/.Env.Local')).toBe(true);
+      expect(matcher.isIgnored('secrets/SERVER.KEY')).toBe(true);
+      expect(matcher.isSensitiveCredential('certs/CA.PEM')).toBe(true);
+      expect(matcher.isSensitiveCredential('~/.SSH/ID_RSA')).toBe(true);
+
+      // Shell argument scanning inherits the case-insensitive guard.
+      const evalUpper = DshRiskEvaluator.evaluate('run_command', { command: 'cat .ENV.PRODUCTION' });
+      expect(evalUpper.riskLevel).toBe('critical');
+      expect(evalUpper.requiresApproval).toBe(true);
+
+      // Only the credential rules fold case; ordinary literal matching stays exact.
+      expect(matcher.isIgnored('SRC/App.tsx'.toUpperCase())).toBe(false);
+    });
+
+    it('warns once per unsupported ignore-file pattern instead of failing silently', () => {
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-ignore-warn-'));
+      try {
+        fs.writeFileSync(
+          path.join(tempDir, '.gitignore'),
+          ['*.log', '!keep.log', 'logs/', '# just a comment', 'plain-name'].join('\n'),
+          'utf-8'
+        );
+
+        const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+        try {
+          new DshIgnoreMatcher(tempDir);
+          // Second construction with the same patterns must NOT re-warn.
+          new DshIgnoreMatcher(tempDir);
+
+          const warnedText = stderrSpy.mock.calls.map((c) => String(c[0])).join('');
+          expect(warnedText).toContain('*.log');
+          expect(warnedText).toContain('!keep.log');
+          expect(warnedText).toContain('logs/');
+          expect(warnedText).toContain('matched literally');
+
+          const countFor = (needle: string) =>
+            stderrSpy.mock.calls.filter((c) => String(c[0]).includes(needle)).length;
+          expect(countFor('*.log')).toBe(1);
+          expect(countFor('!keep.log')).toBe(1);
+          expect(countFor('logs/')).toBe(1);
+
+          // Literal patterns and comments are honored as-is and never warn.
+          expect(warnedText).not.toContain('plain-name');
+          expect(warnedText).not.toContain('# just a comment');
+        } finally {
+          stderrSpy.mockRestore();
+        }
+
+        // Literal entries still match by exact name/path equality.
+        const matcher = new DshIgnoreMatcher(tempDir);
+        expect(matcher.isIgnored('plain-name')).toBe(true);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
     });
 
     it('scans shell command arguments for protected credentials before auto-approval', () => {

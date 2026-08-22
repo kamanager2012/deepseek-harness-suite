@@ -113,7 +113,10 @@ export class DshRiskEvaluator {
     if (binary === 'npm' && tokens[1] === '-v') return true;
     if (binary === 'pnpm' && tokens[1] === '-v') return true;
     if (binary === 'tsc' && tokens[1] === '--noEmit') return true;
-    if (binary === 'vitest' && tokens[1] === 'run') return true;
+    // NOTE: test runners (vitest/jest/node <file>) are intentionally NOT on this
+    // list: executing a test file runs arbitrary code inside it (config and
+    // setupFiles can delete files, mutate the workspace, or exfiltrate env),
+    // so such commands fall through to the default approval-required path.
 
     // 3. Git read-only subcommands
     if (binary === 'git' && tokens[1]) {

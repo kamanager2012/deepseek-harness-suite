@@ -12,6 +12,13 @@ export class DshEventStream {
 
   constructor() {
     this.emitter.setMaxListeners(50);
+    // emitEvent() re-emits each event by its `type`. A normalized event typed
+    // 'error' then collides with the EventEmitter control channel and throws
+    // ERR_UNHANDLED_ERROR when nobody subscribed through the private emitter.
+    // The public surface (on()/onEvent()) only ever listens on the 'event'
+    // bus, so that typed channel can never gain subscribers — keep it inert
+    // instead of crashing the host process.
+    this.emitter.on('error', () => {});
   }
 
   /**

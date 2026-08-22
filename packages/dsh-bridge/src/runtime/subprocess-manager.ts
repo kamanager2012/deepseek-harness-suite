@@ -118,16 +118,16 @@ export class DshSubprocessManager {
       this.appendLog(`[SUPERVISOR] Process exited with code ${code}, signal ${signal}`);
       this.health.running = false;
       this.child = null;
-      if (this.healthCheckTimer) {
-        clearInterval(this.healthCheckTimer);
-        this.healthCheckTimer = null;
-      }
+      this.stopHealthPolling();
     });
 
     child.on('error', (err) => {
       this.appendLog(`[SUPERVISOR ERROR] Failed to start process: ${err.message}`);
       this.health.running = false;
       this.child = null;
+      // A spawn failure (e.g. ENOENT) emits 'error' without a matching 'exit',
+      // so the health poll must be torn down here too or it spins forever.
+      this.stopHealthPolling();
     });
 
     // Start health monitor
@@ -137,7 +137,7 @@ export class DshSubprocessManager {
   }
 
   private startHealthPolling(startTime: number): void {
-    if (this.healthCheckTimer) clearInterval(this.healthCheckTimer);
+    this.stopHealthPolling();
 
     this.healthCheckTimer = setInterval(() => {
       if (this.child && !this.child.killed) {
@@ -147,14 +147,18 @@ export class DshSubprocessManager {
     }, 2000);
   }
 
-  /**
-   * Stop the running subprocess gracefully
-   */
-  public async stop(): Promise<void> {
+  private stopHealthPolling(): void {
     if (this.healthCheckTimer) {
       clearInterval(this.healthCheckTimer);
       this.healthCheckTimer = null;
     }
+  }
+
+  /**
+   * Stop the running subprocess gracefully
+   */
+  public async stop(): Promise<void> {
+    this.stopHealthPolling();
 
     if (!this.child || this.child.killed) {
       this.health.running = false;

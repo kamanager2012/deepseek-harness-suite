@@ -64,11 +64,15 @@ export class DshDoctor {
     const sessionsDir = path.join(dshHome, 'sessions');
     const suiteSessionsDir = path.join(dshHome, 'suite_sessions');
     try {
-      if (!fs.existsSync(sessionsDir)) {
-        fs.mkdirSync(sessionsDir, { recursive: true });
+      // The official sessions store belongs to the official runtime and is
+      // read-only for the suite: probe existence/readability only — never
+      // create or mutate it.
+      const officialSessionsPresent = fs.existsSync(sessionsDir);
+      if (officialSessionsPresent) {
+        fs.accessSync(sessionsDir, fs.constants.R_OK);
       }
-      fs.accessSync(sessionsDir, fs.constants.R_OK);
 
+      // The suite-owned store may be provisioned on demand.
       if (!fs.existsSync(suiteSessionsDir)) {
         fs.mkdirSync(suiteSessionsDir, { recursive: true });
       }
@@ -78,7 +82,9 @@ export class DshDoctor {
         name: 'Session Single-Source-of-Truth (~/.dsh/sessions & ~/.dsh/suite_sessions)',
         category: 'storage',
         status: 'pass',
-        detail: `Read/Write permissions verified: ${suiteSessionsDir}`,
+        detail: officialSessionsPresent
+          ? `Read/Write permissions verified: ${suiteSessionsDir}; official store readable: ${sessionsDir}`
+          : `Suite store verified: ${suiteSessionsDir}. Official sessions dir not present yet (created by the official runtime on first use; never written by the suite)`,
       });
     } catch (err: any) {
       checks.push({
